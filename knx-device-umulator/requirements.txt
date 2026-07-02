@@ -1,0 +1,4 @@
+xknx>=2.11
+aiohttp>=3.9
+prompt_toolkit>=3.0
+pytest>=8.0
