@@ -67,23 +67,26 @@ class DPTScaling(DPT):
         return round(raw[0] * 100 / 255, 1)
 
 
-class DPTTemperature(DPT):
-    """9.001 — температура, 2-байтный float KNX."""
+class DPT2ByteFloat(DPT):
+    """Базовый кодек 2-байтного float KNX (класс 9.xxx).
 
-    main, sub = 9, 1
-    unit = "°C"
+    Формат один на все 9.xxx — подклассы задают лишь main/sub, unit и диапазон.
+    """
+
+    main, sub = 9, 0
+    unit = ""
     payload_kind = "array"
 
-    _MIN = -273.0
-    _MAX = 670760.0
+    _MIN = -671088.64
+    _MAX = 670760.96
 
     def encode(self, value) -> bytes:
         try:
             v = float(value)
         except (TypeError, ValueError) as exc:
-            raise DPTError(f"9.001 ожидает число, получено {value!r}") from exc
+            raise DPTError(f"{self.dpt_id} ожидает число, получено {value!r}") from exc
         if not (self._MIN <= v <= self._MAX):
-            raise DPTError(f"9.001 вне диапазона: {v}")
+            raise DPTError(f"{self.dpt_id} вне диапазона {self._MIN}..{self._MAX}: {v}")
         scaled = v * 100.0
         exponent = 0
         while scaled < -2048.0 or scaled > 2047.0:
@@ -96,7 +99,7 @@ class DPTTemperature(DPT):
 
     def decode(self, raw: bytes) -> float:
         if len(raw) < 2:
-            raise DPTError("9.001: ожидалось 2 байта")
+            raise DPTError(f"{self.dpt_id}: ожидалось 2 байта")
         word = (raw[0] << 8) | raw[1]
         sign = (word >> 15) & 0x1
         exponent = (word >> 11) & 0x0F
@@ -106,15 +109,70 @@ class DPTTemperature(DPT):
         return round((mantissa << exponent) * 0.01, 2)
 
 
+class DPTTemperature(DPT2ByteFloat):
+    """9.001 — температура, 2-байтный float KNX."""
+
+    main, sub = 9, 1
+    unit = "°C"
+    _MIN = -273.0
+    _MAX = 670760.0
+
+
+class DPTAirQualityPpm(DPT2ByteFloat):
+    """9.008 — концентрация в ppm (напр. TVOC, CO2)."""
+
+    main, sub = 9, 8
+    unit = "ppm"
+    _MIN = 0.0
+
+
+class DPTConcentrationUgm3(DPT2ByteFloat):
+    """9.030 — концентрация в µg/m³ (напр. CH2O, PM1.0/PM2.5/PM10)."""
+
+    main, sub = 9, 30
+    unit = "µg/m³"
+    _MIN = 0.0
+
+
+class DPTUCount(DPT):
+    """5.010 — счётчик 0..255 в одном байте без знака (напр. AQI)."""
+
+    main, sub = 5, 10
+    unit = ""
+    payload_kind = "array"
+
+    def encode(self, value) -> bytes:
+        try:
+            v = int(round(float(value)))
+        except (TypeError, ValueError) as exc:
+            raise DPTError(f"5.010 ожидает число, получено {value!r}") from exc
+        if not (0 <= v <= 255):
+            raise DPTError(f"5.010 вне диапазона 0..255: {v}")
+        return bytes([v])
+
+    def decode(self, raw) -> int:
+        if isinstance(raw, (bytes, bytearray)):
+            if not raw:
+                raise DPTError("5.010: пустой полезный груз")
+            return raw[0]
+        return int(raw)
+
+
 # --- реестр и фабрика --------------------------------------------------------
 DPT_BOOL = DPTBool()
 DPT_SCALING = DPTScaling()
 DPT_TEMPERATURE = DPTTemperature()
+DPT_UCOUNT = DPTUCount()
+DPT_AIR_QUALITY_PPM = DPTAirQualityPpm()
+DPT_CONCENTRATION_UGM3 = DPTConcentrationUgm3()
 
 _REGISTRY: dict[str, DPT] = {
     DPT_BOOL.dpt_id: DPT_BOOL,
     DPT_SCALING.dpt_id: DPT_SCALING,
     DPT_TEMPERATURE.dpt_id: DPT_TEMPERATURE,
+    DPT_UCOUNT.dpt_id: DPT_UCOUNT,
+    DPT_AIR_QUALITY_PPM.dpt_id: DPT_AIR_QUALITY_PPM,
+    DPT_CONCENTRATION_UGM3.dpt_id: DPT_CONCENTRATION_UGM3,
 }
 
 
