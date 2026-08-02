@@ -1,4 +1,4 @@
-*[English](README.en.md) · Русский*
+*[English](README.en.md) · Русский · [Deutsch](README.de.md)*
 
 # KNX Device Emulator
 
