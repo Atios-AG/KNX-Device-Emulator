@@ -113,6 +113,53 @@ gesetzter Saison ist die Richtung bereits fest vorgegeben (Sommer → nur `cool`
 Winter → nur `heat`), deshalb wird ein `auto`-Befehl vom Bus oder vom Panel
 ignoriert (mit einem Log-Eintrag).
 
+## Garagentor: Laufzeit und Statusvarianten
+
+Typ `garage_door`. Das einzige Steuerobjekt ist das Bit `Action` (DPT 1.008):
+`0` = öffnen (Auf), `1` = schließen (Ab); `Inverted = True` vertauscht beide.
+Wie ein echter Antrieb braucht das Tor `TravelSec` Sekunden von einer
+Endlage zur anderen. Ein Gegenbefehl während der Fahrt kehrt das Tor aus der
+aktuellen virtuellen Position um — der Rest der Fahrt dauert proportional
+lange. Ein Befehl in dieselbe Richtung (oder „öffnen“ für ein bereits offenes
+Tor) wird ohne Telegramm ignoriert, nur mit einer Zeile im Log.
+
+Der Status kann auf drei Arten gemeldet werden, alle **optional und
+unabhängig**: Aktiv ist die Variante, deren Gruppenadresse in der Konfiguration
+gesetzt ist (jede Kombination, auch alle drei gleichzeitig).
+
+| Schlüssel | DPT | Verhalten |
+|---|---|---|
+| `Status` | 1.008 | ein Bit, folgt der Befehlssemantik: `1` = geschlossen (mit `Inverted` — `1` = offen). Nur in den Endlagen aktualisiert |
+| `StatusPosition` | 5.001 | `0 %` = geschlossen, `100 %` = offen. Nur in den Endlagen aktualisiert |
+| `SensorOpened` / `SensorClosed` | 1.002 | zwei Endlagensensoren, `1` = das Tor steht an dieser Endlage |
+
+Sensorabfolge beim Öffnen aus der geschlossenen Stellung:
+
+| Moment | `SensorOpened` | `SensorClosed` |
+|---|---|---|
+| geschlossen | 0 | 1 |
+| Öffnen begonnen | 0 | 0 (Telegramm `SensorClosed` → 0) |
+| fährt | 0 | 0 |
+| ganz offen | 1 (Telegramm `SensorOpened` → 1) | 0 |
+
+Befehle vom Panel: `open`, `close` (wie der Busbefehl) und `stop` — Halt auf
+halbem Weg: Beide Sensoren bleiben `0`, Bit und Prozentwert melden weiterhin
+die zuletzt erreichte Endlage. Das nächste `open`/`close` fährt vom Haltepunkt
+aus weiter.
+
+```ini
+[garage0]
+type           = garage_door
+Action         = 1/7/1     ; Befehl (DPT 1.008)
+Status         = 2/7/1     ; Bit (optional)
+StatusPosition = 2/7/2     ; Prozent (optional)
+SensorOpened   = 2/7/3     ; Sensor „offen“ (optional)
+SensorClosed   = 2/7/4     ; Sensor „geschlossen“ (optional)
+TravelSec      = 15        ; volle Laufzeit, s (Standard 10)
+State          = closed    ; Anfangszustand: closed | open
+Inverted       = False
+```
+
 ## Steuerschnittstelle (REST)
 
 ```

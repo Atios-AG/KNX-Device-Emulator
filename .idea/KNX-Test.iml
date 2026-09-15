@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/knx-device-emulator" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.13 (KNX-Test)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="~/PycharmProjects/KNX-Test/.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

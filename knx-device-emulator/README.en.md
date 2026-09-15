@@ -109,6 +109,53 @@ device section has no `StatusSeason`/`Season`. With a season set, the direction
 is already fixed (summer → only `cool`, winter → only `heat`), so an `auto`
 command from the bus or from the panel is ignored (with a log entry).
 
+## Garage door: travel time and status flavours
+
+Type `garage_door`. The only control object is the `Action` bit (DPT 1.008):
+`0` = open (Up), `1` = close (Down); `Inverted = True` swaps them. Like a real
+drive, the door travels for `TravelSec` seconds from one end position to the
+other. An opposite command while the door is moving reverses it from the
+current virtual position — the rest of the travel takes a proportional time.
+A command in the same direction (or "open" for a door that is already open)
+is ignored without any telegram, only with a line in the log.
+
+The status can be reported in three ways, all of them **optional and
+independent**: a flavour is active when its group address is set in the
+config (any combination, even all three at once).
+
+| Key | DPT | Behaviour |
+|---|---|---|
+| `Status` | 1.008 | one bit that follows the command semantics: `1` = closed (with `Inverted` — `1` = open). Updated only at the end positions |
+| `StatusPosition` | 5.001 | `0 %` = closed, `100 %` = open. Updated only at the end positions |
+| `SensorOpened` / `SensorClosed` | 1.002 | two end-position sensors, `1` = the door rests at that end |
+
+The sensor sequence when opening from the closed position:
+
+| Moment | `SensorOpened` | `SensorClosed` |
+|---|---|---|
+| closed | 0 | 1 |
+| started opening | 0 | 0 (telegram `SensorClosed` → 0) |
+| travelling | 0 | 0 |
+| fully open | 1 (telegram `SensorOpened` → 1) | 0 |
+
+Panel commands: `open`, `close` (the same as the bus command) and `stop` —
+a halt half-way: both sensors stay `0`, the bit and the percentage keep
+reporting the last end position reached. The next `open`/`close` continues
+from the halt point.
+
+```ini
+[garage0]
+type           = garage_door
+Action         = 1/7/1     ; command (DPT 1.008)
+Status         = 2/7/1     ; bit (optional)
+StatusPosition = 2/7/2     ; percentage (optional)
+SensorOpened   = 2/7/3     ; "open" sensor (optional)
+SensorClosed   = 2/7/4     ; "closed" sensor (optional)
+TravelSec      = 15        ; full travel time, s (10 by default)
+State          = closed    ; initial state: closed | open
+Inverted       = False
+```
+
 ## Control interface (REST)
 
 ```

@@ -66,6 +66,16 @@ class DeviceConfig:
                 f"[{self.section_name}] {key}: expected an integer"
             ) from exc
 
+    def get_float(self, key: str, default: float | None = None) -> float | None:
+        if key.lower() not in self._data:
+            return default
+        try:
+            return float(self._data[key.lower()])
+        except ValueError as exc:
+            raise InvalidValueError(
+                f"[{self.section_name}] {key}: expected a number"
+            ) from exc
+
     def get_ga(self, key: str) -> GroupAddress:
         return GroupAddress.from_string(self.require(key))
 
@@ -87,7 +97,12 @@ class AppConfig:
 class ConfigLoader:
     @staticmethod
     def load(path: str) -> AppConfig:
-        parser = configparser.ConfigParser()
+        # no interpolation: '%' is common in comments ("0..100 %") and in
+        # values; inline comments after ';' or '#' are stripped, as in the
+        # examples of every device plugin
+        parser = configparser.ConfigParser(
+            interpolation=None, inline_comment_prefixes=(";", "#")
+        )
         read = parser.read(path)
         if not read:
             raise ConfigError(f"Configuration file not found: {path}")
