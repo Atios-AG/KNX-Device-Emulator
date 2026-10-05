@@ -19,6 +19,7 @@ from core.registry import DeviceRegistry
 from tests.fakes import FakeBusAdapter
 
 ACTION, STATUS, POSITION, OPENED, CLOSED = "1/7/1", "2/7/1", "2/7/2", "2/7/3", "2/7/4"
+ACTION_OPEN, ACTION_CLOSE = "1/7/8", "1/7/9"
 
 _BASE = {
     "type": "garage_door",
@@ -465,3 +466,170 @@ def test_impulse_while_standing_moves_as_the_bit_asks():
     dev._arrive()
     assert dev.state == "closed"
     assert _writes(bus)[-1] == (CLOSED, True)
+
+
+# --- push button (PushButton = True) -----------------------------------------
+
+@pytest.mark.parametrize("bit", [0, 1])
+def test_push_at_the_closed_end_opens_whatever_the_bit(bit):
+    dev, bus, _ = _setup({"PushButton": "True"})
+    bus.inject(ACTION, "write", bit)
+    assert dev.state == "opening"
+    assert _writes(bus) == [(CLOSED, False)]
+
+
+@pytest.mark.parametrize("bit", [0, 1])
+def test_push_at_the_open_end_closes_whatever_the_bit(bit):
+    dev, bus, _ = _setup({"PushButton": "True", "State": "open"})
+    bus.inject(ACTION, "write", bit)
+    assert dev.state == "closing"
+    assert _writes(bus) == [(OPENED, False)]
+
+
+def test_push_ignores_inverted():
+    dev, bus, _ = _setup({"PushButton": "True", "Inverted": "true"})
+    bus.inject(ACTION, "write", 0)  # as a command, inverted 0 = close: ignored at the closed end
+    assert dev.state == "opening"
+
+
+def test_push_cycle_open_close():
+    dev, bus, _ = _setup({"PushButton": "True"})
+    bus.inject(ACTION, "write", 1)
+    dev._clock.advance(10)
+    dev._arrive()
+    assert dev.state == "open"
+    bus.inject(ACTION, "write", 1)
+    assert dev.state == "closing"
+    dev._clock.advance(10)
+    dev._arrive()
+    assert dev.state == "closed"
+    assert _writes(bus) == [
+        (CLOSED, False), (STATUS, False), (POSITION, 100.0), (OPENED, True),
+        (OPENED, False), (STATUS, True), (POSITION, 0.0), (CLOSED, True),
+    ]
+
+
+def test_push_while_moving_reverses_from_the_current_position():
+    dev, bus, _ = _setup({"PushButton": "True"})
+    bus.inject(ACTION, "write", 1)
+    dev._clock.advance(4)  # 40 % open
+    bus.inject(ACTION, "write", 1)
+    assert dev.state == "closing"
+    assert dev._arrival_due - dev._clock() == pytest.approx(4.0)
+    dev._clock.advance(4)
+    dev._arrive()
+    assert dev.state == "closed"
+    assert _writes(bus) == [
+        (CLOSED, False), (STATUS, True), (POSITION, 0.0), (CLOSED, True),
+    ]
+
+
+def test_push_cycle_open_stop_close_stop_with_impulse(caplog):
+    dev, bus, _ = _setup({"PushButton": "True", "Impulse": "True"})
+    bus.inject(ACTION, "write", 1)  # open
+    assert dev.state == "opening"
+    dev._clock.advance(4)
+    with caplog.at_level(logging.INFO):
+        bus.inject(ACTION, "write", 1)  # stop at 40 %
+    assert dev.state == "stopped"
+    assert dev.state_snapshot()["position"] == 40.0
+    assert any("push" in m and "halting" in m for m in _infos(caplog))
+    bus.inject(ACTION, "write", 1)  # close: back from where it was heading
+    assert dev.state == "closing"
+    assert dev._arrival_due - dev._clock() == pytest.approx(4.0)
+    dev._clock.advance(1)
+    bus.inject(ACTION, "write", 1)  # stop at 30 %
+    assert dev.state == "stopped"
+    assert dev.state_snapshot()["position"] == pytest.approx(30.0)
+    bus.inject(ACTION, "write", 1)  # open again
+    assert dev.state == "opening"
+    assert dev._arrival_due - dev._clock() == pytest.approx(7.0)
+    assert _writes(bus) == [(CLOSED, False)]  # no end was reached in between
+
+
+def test_push_after_a_half_way_stop_goes_back():
+    dev, bus, ctl = _setup({"PushButton": "True"})
+    bus.inject(ACTION, "write", 0)
+    dev._clock.advance(4)
+    ctl.execute(Command("garage0", "stop"))
+    bus.inject(ACTION, "write", 0)
+    assert dev.state == "closing"
+    assert dev._arrival_due - dev._clock() == pytest.approx(4.0)
+
+
+# --- two pulsed channels (ActionOpen / ActionClose) --------------------------
+
+def _two_channels(extra=None):
+    data = {"ActionOpen": ACTION_OPEN, "ActionClose": ACTION_CLOSE}
+    data.update(extra or {})
+    return _setup(data, remove=("Action",))
+
+
+@pytest.mark.parametrize("value", [0, 1])
+def test_any_telegram_on_the_open_channel_opens(value):
+    dev, bus, _ = _two_channels()
+    bus.inject(ACTION_OPEN, "write", value)
+    assert dev.state == "opening"
+    assert _writes(bus) == [(CLOSED, False)]
+    dev._clock.advance(10)
+    dev._arrive()
+    assert dev.state == "open"
+    assert _writes(bus)[1:] == [(STATUS, False), (POSITION, 100.0), (OPENED, True)]
+
+
+@pytest.mark.parametrize("value", [0, 1])
+def test_any_telegram_on_the_close_channel_closes(value):
+    dev, bus, _ = _two_channels({"State": "open"})
+    bus.inject(ACTION_CLOSE, "write", value)
+    assert dev.state == "closing"
+    assert _writes(bus) == [(OPENED, False)]
+    dev._clock.advance(10)
+    dev._arrive()
+    assert dev.state == "closed"
+    assert _writes(bus)[1:] == [(STATUS, True), (POSITION, 0.0), (CLOSED, True)]
+
+
+def test_other_channel_while_moving_reverses():
+    dev, bus, _ = _two_channels()
+    bus.inject(ACTION_OPEN, "write", 1)
+    dev._clock.advance(4)  # 40 % open
+    bus.inject(ACTION_CLOSE, "write", 1)
+    assert dev.state == "closing"
+    assert dev._arrival_due - dev._clock() == pytest.approx(4.0)
+    assert _writes(bus) == [(CLOSED, False)]
+
+
+def test_same_channel_while_moving_is_ignored(caplog):
+    dev, bus, _ = _two_channels()
+    bus.inject(ACTION_OPEN, "write", 1)
+    dev._clock.advance(3)
+    with caplog.at_level(logging.INFO):
+        bus.inject(ACTION_OPEN, "write", 1)
+    assert any("ignored" in m and "already opening" in m for m in _infos(caplog))
+    # the travel was not restarted
+    assert dev._arrival_due - dev._clock() == 7.0
+
+
+def test_open_channel_at_the_open_end_is_ignored(caplog):
+    dev, bus, _ = _two_channels({"State": "open"})
+    with caplog.at_level(logging.INFO):
+        bus.inject(ACTION_OPEN, "write", 1)
+    assert bus.writes == []
+    assert dev.state == "open"
+    assert any("ignored" in m and "already open" in m for m in _infos(caplog))
+
+
+def test_two_channels_replace_the_action_object():
+    dev, bus, _ = _setup({"ActionOpen": ACTION_OPEN, "ActionClose": ACTION_CLOSE})
+    bus.inject(ACTION, "write", 0)  # Action is not listened to any more
+    assert dev.state == "closed"
+    bus.inject(ACTION_OPEN, "write", 0)
+    assert dev.state == "opening"
+
+
+def test_two_channels_need_both_addresses():
+    # half a pair is an error even though Action is still in the config
+    with pytest.raises(MissingOptionError):
+        _setup({"ActionOpen": ACTION_OPEN})
+    with pytest.raises(MissingOptionError):
+        _setup({"ActionClose": ACTION_CLOSE})
