@@ -148,7 +148,7 @@ class CliTransport(ControlTransport):
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
-        log.info("CLI control interface started (TAB — completion, 'help' — reference)")
+        log.info("CLI control interface started (TAB completes, 'help' shows the reference)")
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -201,7 +201,7 @@ class CliTransport(ControlTransport):
         if line in ("help", "?"):
             print("Format: <device> <command> [key=value ...]")
             print("Built-ins: list | describe <dev> | help | quit")
-            print("TAB — show the available options with a description")
+            print("TAB shows the available options with a description")
             return False
         if line == "list":
             for item in self.interface.list_devices():

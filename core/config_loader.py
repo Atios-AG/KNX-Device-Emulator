@@ -1,6 +1,6 @@
-"""Loading and validation of the configuration (ini).
+"""Loads and validates the ini configuration.
 
-Service sections:
+Reserved sections:
   [knx]      — bus connection parameters (KNXnet/IP)
   [control]  — control interface parameters
 All the other sections describe virtual devices; every one of them must have a
@@ -25,7 +25,7 @@ _FALSE = {"0", "false", "no", "off"}
 
 
 class DeviceConfig:
-    """Type-safe wrapper over a device config section."""
+    """Type-safe wrapper around a device config section."""
 
     def __init__(self, section_name: str, data: dict[str, str]):
         self.section_name = section_name

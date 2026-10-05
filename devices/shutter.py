@@ -11,9 +11,9 @@ Status objects (all optional, active when the group address is set):
   * `StatusMovement`  — DPT 1.008 bit reported together with the position:
                         1 while the shutter rests fully closed, else 0.
 
-Like a real motor the drive needs `TravelSec` for the full way; a target in the
+Like a real motor the drive needs `TravelSec` for a full run; a target in the
 opposite direction reverses the drive from its virtual position. A command for
-the position the shutter already has (or is already moving to) is ignored with
+the position the shutter is already at (or is already moving to) is ignored with
 a log line. Local commands: `up`, `down`, `stop`, `position` (percent=NN).
 
 Config:

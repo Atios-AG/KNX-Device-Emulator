@@ -67,7 +67,7 @@ class KNXIPBusAdapter(BusAdapter):
             )
 
         self._xknx = XKNX(connection_config=conn)
-        # register the receive callback before the start (a proven pattern)
+        # register the receive callback before starting xknx
         self._cb_handle = self._xknx.telegram_queue.register_telegram_received_cb(
             self._on_xknx_telegram
         )

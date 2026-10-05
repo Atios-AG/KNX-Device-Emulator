@@ -1,7 +1,8 @@
 """Virtual garage door drive: one-bit command, three optional status flavours.
 
-The only control object is a bit (DPT 1.008 Up/Down): 0 = open (up),
-1 = close (down); `Inverted = True` swaps the two. Like a real motor, the
+By default the control object is a bit (DPT 1.008 Up/Down): 0 = open (up),
+1 = close (down); `Inverted = True` swaps the two (push-button and
+two-channel drives are under "Drive variants" below). Like a real motor, the
 drive needs `TravelSec` seconds to travel between the end positions. An
 opposite command while the door is moving reverses it from the current
 virtual position — the rest of the travel takes a proportional time. A
@@ -36,11 +37,25 @@ Local commands: `open` and `close` (like the bus command) and `stop`, which
 halts the drive half-way: both sensors stay 0, the bit and the percentage
 keep reporting the last end position reached.
 
-Impulse mode (`Impulse = True`): a drive with a stop state, where every bus
-telegram is one press of the button. A telegram while the door is moving
-halts it (like `stop`), a telegram while it stands moves it as the bit asks
-(same as the default mode). This is the model the bridge itself assumes for
-`GarageHasStopState`: re-target = halt + second pulse one second later.
+Drive variants — by default a motor is emulated and the bit sets the
+direction; other drives are switched on in the config:
+
+  * `Impulse = True` — a drive with a stop state, where every bus telegram
+    is one press of the button. A telegram while the door is moving halts
+    it (like `stop`), a telegram while it stands moves it as the bit asks
+    (same as the default mode). This is the model the bridge itself assumes
+    for `GarageHasStopState`: re-target = halt + second pulse one second
+    later.
+  * `PushButton = True` — `Action` is the push button of the drive and the
+    bit value is ignored. At an end position a press moves the door away
+    from that end; after a half-way halt, back the way it came. A press
+    while the door is moving reverses it, or halts it when `Impulse = True`
+    — the open-close and open-stop-close-stop cycles.
+  * `ActionOpen` + `ActionClose` — two pulsed channels instead of `Action`
+    (a switch actuator, one channel per direction): any telegram on
+    `ActionOpen` opens, on `ActionClose` closes, the value does not matter.
+    Both addresses are required, `Action` is not used then, and `Impulse` /
+    `PushButton` have no effect on the two channels.
 
 Config:
     [garage0]
@@ -57,12 +72,11 @@ Config:
     InvertedSensorOpened = False  ; True: SensorOpened 0 = door rests fully open
     InvertedSensorClosed = False  ; True: SensorClosed 0 = door rests fully closed
     Impulse        = False     ; True: a telegram while moving halts the drive
-    PushButton     = False     ; True: Action is the push button of the drive, the bit is ignored:
-                               ;   at rest a press moves the door away from the end it rests at (mid-way:
-                               ;   back from where it was heading), while moving it halts (Impulse = True)
-                               ;   or reverses (Impulse = False) — the open-stop-close-stop / open-close cycle
-    ActionOpen     = 1/7/8     ; optional — instead of Action: two channels, any telegram on ActionOpen opens,
-    ActionClose    = 1/7/9     ;   on ActionClose closes (a switch actuator with two pulsed channels)
+    PushButton     = False     ; True: Action is the push button of the drive, the bit is ignored
+
+    ; two pulsed channels instead of Action (both required):
+    ActionOpen     = 1/7/8     ; any telegram opens
+    ActionClose    = 1/7/9     ; any telegram closes
 """
 
 from __future__ import annotations

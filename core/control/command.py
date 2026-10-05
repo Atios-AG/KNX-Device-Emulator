@@ -13,7 +13,7 @@ class Command:
 
     @classmethod
     def from_line(cls, line: str) -> "Command":
-        """Parsing of a CLI line: 'outlet0 set on=true' / 'dimmer toggle'."""
+        """Parse a CLI line: 'outlet0 set on=true' / 'dimmer toggle'."""
         tokens = line.split()
         if len(tokens) < 2:
             raise ValueError("Format: <device> <command> [key=value ...]")

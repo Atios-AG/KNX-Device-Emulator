@@ -1,7 +1,7 @@
 """Entry point of the KNX virtual device simulator.
 
-Wiring of the components: config -> plugin registry -> bus -> device manager
--> control interface. There is no business logic here.
+Wires the components together: config -> plugin registry -> bus -> device
+manager -> control interface. No business logic lives here.
 
 Run with:
     python main.py --config config.ini
@@ -34,8 +34,8 @@ def _die(code: int = 130) -> None:
     """Terminate the process right now, without waiting for anything.
 
     Used when a graceful shutdown is not possible or takes too long: os._exit
-    skips the atexit handlers and the asyncio finalisation (which is exactly
-    what can hang on the KNX connection), so the logs are flushed by hand.
+    skips the atexit handlers and the asyncio finalisation (the very part
+    that can hang on the KNX connection), so the logs are flushed by hand.
     """
     try:
         sys.stdout.flush()
@@ -118,7 +118,7 @@ async def run(config_path: str, shutdown_timeout: float = DEFAULT_SHUTDOWN_TIMEO
 
     # From here on nothing may block the exit: the KNX disconnect (and any
     # device timer) gets a limited amount of time, after that the process is
-    # killed as it is.
+    # killed anyway.
     # a bit later than wait_for below: the watchdog is the backstop that also
     # covers the asyncio.run() finalisation, not the primary limit
     _arm_watchdog(shutdown_timeout + 1.0, code=0)
@@ -130,12 +130,12 @@ async def run(config_path: str, shutdown_timeout: float = DEFAULT_SHUTDOWN_TIMEO
         log.info("Stopped.")
     except (asyncio.TimeoutError, TimeoutError):
         log.warning(
-            "The KNX shutdown did not finish in %.1f s — terminating as is.",
+            "The KNX shutdown did not finish in %.1f s — exiting anyway.",
             shutdown_timeout,
         )
         _die(0)
     except Exception as exc:  # a broken connection must not block the exit
-        log.warning("Error while stopping: %s — terminating as is.", exc)
+        log.warning("Error while stopping: %s — exiting anyway.", exc)
         _die(0)
 
     # the leftovers (xknx internals, transport tasks): cancel and do not wait
@@ -146,7 +146,7 @@ async def run(config_path: str, shutdown_timeout: float = DEFAULT_SHUTDOWN_TIMEO
     if pending:
         await asyncio.wait(pending, timeout=0.5)
 
-    # Everything of ours is stopped. Leaving through asyncio.run() would still
+    # Everything we own has stopped. Leaving through asyncio.run() would still
     # block: its finalisation waits for the default executor (the blocking
     # stdin.readline of the CLI) and for the xknx internals. Nothing useful is
     # left to do, so the process ends right here.
@@ -178,8 +178,8 @@ def main() -> None:
         "--shutdown-timeout",
         type=float,
         default=DEFAULT_SHUTDOWN_TIMEOUT,
-        help="seconds given to the graceful shutdown before the process is "
-             f"killed as is (default: {DEFAULT_SHUTDOWN_TIMEOUT:g})",
+        help="seconds to wait for a graceful shutdown before the process is "
+             f"killed anyway (default: {DEFAULT_SHUTDOWN_TIMEOUT:g})",
     )
     args = parser.parse_args()
 

@@ -1,6 +1,6 @@
 """Virtual outlet / relay (DPT 1.001).
 
-An example of a minimal device. It demonstrates all three actuation channels:
+An example of a minimal device. It shows all three ways to drive a device:
   * from the bus — on_action() when a Write arrives at the Action address;
   * polling      — read_status() when a Read arrives at the Status address;
   * locally      — @local_command (like a button press on a panel).
@@ -34,7 +34,7 @@ class OutletDevice(BaseDevice):
 
     # --- bus -----------------------------------------------------------------
     def on_action(self, bus_value: bool) -> None:
-        # the value on the bus is inverted into the physical state and vice versa
+        # with Inverted the bus value and the physical state are opposites
         self._set(self._invert(bus_value))
 
     def read_status(self) -> bool:
@@ -57,4 +57,4 @@ class OutletDevice(BaseDevice):
 
     def _set(self, physical: bool) -> None:
         self._state = bool(physical)
-        self.publish(self.status)  # report the new status to the bus, like hardware
+        self.publish(self.status)  # report the new status to the bus, as real hardware would

@@ -61,7 +61,7 @@ class DeviceManager:
         if kind == "write":
             point = self._action_routes.get(ga)
             if point is not None:
-                point.handle_write(raw)  # the log is written inside handle_write
+                point.handle_write(raw)  # handle_write does the logging
             else:
                 log.debug("WRITE %s — no device at this address, ignoring", ga)
         elif kind == "read":

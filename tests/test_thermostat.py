@@ -134,7 +134,7 @@ def test_auto_turns_device_on_and_mirrors_mode():
     dev, bus, ctl = _auto_dev()
     s = ctl.execute(Command("th", "set_mode", {"mode": "auto"})).state
     assert s["on"] is True and s["mode"] == "auto"
-    # it is exactly auto (option 4) that goes on the bus, not the chosen direction
+    # the bus sees plain auto (option 4), not the direction that was picked
     mode_writes = [v for g, v in bus.writes if str(g) == "2/3/4"]
     assert mode_writes[-1] == "auto"
 
@@ -184,7 +184,7 @@ def test_auto_keeps_heating_until_setpoint():
     ctl.execute(Command("th", "set_mode", {"mode": "auto"}))
     for _ in range(3):
         dev._tick()
-    # 20.5 is already inside the dead band, but the heating that started is not abandoned
+    # 20.5 is already inside the dead band, but heating that has started keeps going
     assert dev.state_snapshot()["auto_action"] == "heat"
     dev._tick()
     assert dev.state_snapshot()["current"] == pytest.approx(21.0, abs=0.01)

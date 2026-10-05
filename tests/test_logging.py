@@ -25,8 +25,8 @@ def test_incoming_knx_write_logged(caplog):
     with caplog.at_level(logging.INFO, logger="knxsim.device.outlet0"):
         bus.inject("1/1/1", "write", 1)
     text = caplog.text
-    assert "KNX -> command" in text   # the fact that a KNX command arrived
-    assert "1/1/1" in text            # at which address
+    assert "KNX -> command" in text   # a KNX command arrived
+    assert "1/1/1" in text            # on which address
     assert "state changed" in text    # what changed
     assert "True" in text             # and the new value
 

@@ -1,7 +1,7 @@
 """KNX bus abstraction.
 
-The core and the devices work only with this interface and know nothing about
-a concrete stack (xknx). The real implementation lives in bus_adapter.py; the
+The core and the devices work only with this interface and don't know which
+stack is underneath (xknx). The real implementation lives in bus_adapter.py; the
 tests use FakeBusAdapter. This makes it possible to test all the logic without
 a network.
 

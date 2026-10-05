@@ -9,8 +9,8 @@ Life cycle:
 
 Local commands ("as if the state had been changed from a panel") are declared
 with the @local_command decorator right in the plugin file. The core invokes
-them through a single dispatch_local_command method — the handling itself is
-described inside the device.
+them through a single dispatch_local_command method — the device itself does
+the handling.
 """
 
 from __future__ import annotations
@@ -87,10 +87,10 @@ class BaseDevice(ABC):
     # --- API for plugins -----------------------------------------------------
     @abstractmethod
     def setup(self) -> None:
-        """Declare the data points and read the specific parameters."""
+        """Declare the data points and read the device's own parameters."""
 
     def add(self, point: DataPoint) -> DataPoint:
-        """Register a data point (returns it back for convenience)."""
+        """Register a data point (and return it, for convenience)."""
         point.device = self  # back-reference for logging
         self.datapoints.append(point)
         return point

@@ -1,4 +1,4 @@
-"""Selection of the control transport by name."""
+"""Picks the control transport by name."""
 
 from __future__ import annotations
 

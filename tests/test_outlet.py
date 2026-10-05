@@ -29,7 +29,7 @@ def test_local_toggle_changes_state_and_emits():
     res = control.execute(Command("outlet0", "toggle"))
     assert res.ok
     assert res.state == {"on": True}
-    assert bus.last_write_value() == 1  # the status went on the bus
+    assert bus.last_write_value() == 1  # the status was sent to the bus
 
 
 def test_local_set():

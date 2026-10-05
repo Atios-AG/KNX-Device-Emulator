@@ -62,7 +62,7 @@ def test_get_device_by_name():
 
 def test_initial_status_broadcast_on_start():
     mgr, bus = _manager([_outlet_entry("outlet0", "1/1/1", "2/2/2")])
-    assert bus.writes == []  # nothing went on the bus before the start
+    assert bus.writes == []  # nothing is sent to the bus before start-up
     asyncio.run(mgr.start_all())
     assert any(str(ga) == "2/2/2" for ga, _ in bus.writes)  # the status was broadcast
     asyncio.run(mgr.stop_all())

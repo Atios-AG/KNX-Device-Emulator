@@ -5,9 +5,9 @@ not depend on anything in the project except the exceptions — easy to test in
 isolation.
 
 payload_kind:
-  * "binary" — the value fits into 6 bits and goes on the bus as DPTBinary(int);
+  * "binary" — the value fits into 6 bits and is sent as DPTBinary(int);
                encode() returns an int, decode() accepts an int.
-  * "array"  — one or several bytes, goes on the bus as DPTArray(bytes);
+  * "array"  — one or several bytes, sent as DPTArray(bytes);
                encode() returns bytes, decode() accepts bytes.
 """
 
@@ -179,7 +179,7 @@ _REGISTRY: dict[str, DPT] = {
 
 
 def dpt_from_string(dpt_id: str) -> DPT:
-    """Return the codec by an identifier of the form '1.001'."""
+    """Return the codec for an id like '1.001'."""
     key = dpt_id.strip()
     if key not in _REGISTRY:
         raise DPTError(f"Unknown DPT: {dpt_id}")

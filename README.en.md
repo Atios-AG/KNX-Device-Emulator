@@ -1,4 +1,4 @@
-*English · [Русский](README.md) · [Deutsch](README.de.md)*
+*English · [Русский](README.md)*
 
 # KNX Device Emulator
 
@@ -20,6 +20,10 @@ pip install -r requirements.txt
 cp config.example.ini config.ini      # edit it for your own environment
 python main.py --config config.ini
 ```
+
+Start-up options: `--log-level DEBUG` — a detailed log; `--shutdown-timeout N` —
+how many seconds to wait for a graceful shutdown after Ctrl+C (3 by default; a
+second Ctrl+C terminates at once).
 
 ## Architecture
 
@@ -79,8 +83,84 @@ class MyDevice(BaseDevice):
         return self.state_snapshot()
 ```
 
-The registry picks it up automatically. Add a section with `type = my_device`
-to `config.ini`.
+The registry picks it up automatically. Add a section to `config.ini`: `type`
+links it to the plugin, the other keys are the ones the device reads in
+`setup()` (here these are the group addresses):
+
+```ini
+[lamp0]
+type   = my_device
+Action = 1/1/1        ; the command arrives here (GroupValueWrite)
+Status = 2/1/1        ; the status is read from and broadcast to here
+```
+
+The kind of telegram is set by the class of the point and needs no
+configuration: an `ActionPoint` accepts a write and calls the handler, a
+`StatusPoint` answers a read and broadcasts the value on `publish()` and at
+start-up.
+
+### Your own data type (DPT)
+
+The type of a value is set by the DPT codec that is passed to the point. The
+core (`core/dpt.py`) has:
+
+| Codec | DPT | Value |
+|---|---|---|
+| `DPT_BOOL` | 1.001 | a bit; fits any one-bit type (1.002, 1.008, 1.010 …) |
+| `DPT_SCALING` | 5.001 | 0..100 % |
+| `DPT_UCOUNT` | 5.010 | a byte 0..255 |
+| `DPT_TEMPERATURE` | 9.001 | °C |
+| `DPT_AIR_QUALITY_PPM` | 9.008 | ppm |
+| `DPT_CONCENTRATION_UGM3` | 9.030 | µg/m³ |
+
+If the one you need is missing, declare it in the same device file — the core
+stays untouched:
+
+```python
+from core.dpt import DPT
+from core.exceptions import DPTError
+
+class DPTPulses(DPT):
+    main, sub = 7, 1                   # DPT 7.001: two unsigned bytes
+    payload_kind = "array"
+
+    def encode(self, value) -> bytes:  # Python value -> payload for the bus
+        v = int(value)
+        if not 0 <= v <= 0xFFFF:
+            raise DPTError(f"7.001 out of range 0..65535: {v}")
+        return bytes([v >> 8, v & 0xFF])
+
+    def decode(self, raw) -> int:      # payload from the bus -> Python value
+        if len(raw) < 2:
+            raise DPTError("7.001: 2 bytes expected")
+        return (raw[0] << 8) | raw[1]
+
+DPT_PULSES = DPTPulses()               # passed to a point instead of DPT_BOOL
+```
+
+`payload_kind` sets the form of the payload: `"binary"` — a value of up to
+6 bits, `encode` returns an `int` and `decode` gets an `int`; `"array"` — one
+or several bytes, `encode` returns `bytes` and `decode` gets `bytes`. This is
+how 20.105 and 1.100 are declared in `devices/thermostat.py`. A type that
+several devices need is better placed in `core/dpt.py`.
+
+## Devices
+
+| `type` | Objects on the bus | Panel commands | Note |
+|---|---|---|---|
+| `outlet` | `Action` / `Status` (DPT 1.001) | `toggle`, `set on=` | `Inverted` inverts the state relative to the bus |
+| `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set_level level=` | |
+| `thermostat` | setpoint and current temperature (9.001), mode (20.105), On/Off (1.001), season (1.100) | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see the section below |
+| `air_conditioner` | everything of `thermostat` and the fan `ActionFan` / `StatusFan` (5.001, 0..100 %) | the same and `set_fan level=` | |
+| `fan` | `ActionFan` / `StatusFan` — the step number in one byte (5.010) | `set_speed speed=`, `off` | `Speeds` — the number of steps, 1..4; a step above the last one is discarded |
+| `fan_relay` | `ActionSpeedN` / `StatusSpeedN` — a relay per step (1.001) | `set_speed speed=`, `off` | verifies the actuator's algorithm: switch all the windings off first, then the needed one on; violations go to the log as errors |
+| `air_quality_sensor` | statuses only: `StatusAQI` (5.010), `StatusCO2` / `StatusTVOC` / `StatusCH2O` (9.008), `StatusPM1` / `StatusPM2_5` / `StatusPM10` (9.030) | `<sensor> set=`, for example `co2 set=400` | a sensor is present when its address is set; `CycleSec` — the cyclic broadcast period |
+| `garage_door` | `Action` (1.008) or the pair `ActionOpen` / `ActionClose`; statuses — a bit, a percentage, two sensors | `open`, `close`, `stop` | see the section below |
+| `shutter` | `Movement` (1.008), `Stop` (1.010), `TargetPosition` / `CurrentPosition` (5.001), `StatusMovement` (1.008) | `up`, `down`, `stop`, `position percent=` | `0 %` = open, `100 %` = closed; the position is reported when the drive comes to rest |
+
+All the configuration keys, with an example section for every type, are in
+`config.example.ini`; the behaviour of a device is described at the top of its
+file (`devices/*.py`).
 
 ## Thermostat / air conditioner: the modes
 
@@ -111,8 +191,9 @@ command from the bus or from the panel is ignored (with a log entry).
 
 ## Garage door: travel time and status flavours
 
-Type `garage_door`. The only control object is the `Action` bit (DPT 1.008):
-`0` = open (Up), `1` = close (Down); `Inverted = True` swaps them. Like a real
+Type `garage_door`. By default the control object is the `Action` bit
+(DPT 1.008): `0` = open (Up), `1` = close (Down); `Inverted = True` swaps them
+(impulse and relay drives are in the "Drive variants" subsection). Like a real
 drive, the door travels for `TravelSec` seconds from one end position to the
 other. An opposite command while the door is moving reverses it from the
 current virtual position — the rest of the travel takes a proportional time.
@@ -126,8 +207,8 @@ config (any combination, even all three at once).
 | Key | DPT | Behaviour |
 |---|---|---|
 | `Status` | 1.008 | one bit that follows the command semantics: `1` = closed (with `Inverted` — `1` = open). Updated only at the end positions |
-| `StatusPosition` | 5.001 | `0 %` = closed, `100 %` = open. Updated only at the end positions |
-| `SensorOpened` / `SensorClosed` | 1.002 | two end-position sensors, `1` = the door rests at that end |
+| `StatusPosition` | 5.001 | `0 %` = closed, `100 %` = open (`InvertedPosition = True` flips the scale). Updated only at the end positions |
+| `SensorOpened` / `SensorClosed` | 1.002 | two end-position sensors, `1` = the door rests at that end (`InvertedSensorOpened` / `InvertedSensorClosed = True`: `0` at the end, like a normally-closed contact) |
 
 The sensor sequence when opening from the closed position:
 
@@ -153,7 +234,31 @@ SensorOpened   = 2/7/3     ; "open" sensor (optional)
 SensorClosed   = 2/7/4     ; "closed" sensor (optional)
 TravelSec      = 15        ; full travel time, s (10 by default)
 State          = closed    ; initial state: closed | open
-Inverted       = False
+Inverted       = False     ; True: command 1 = open, bit status 1 = open
+InvertedPosition     = False   ; True: 0 % = open, 100 % = closed
+InvertedSensorOpened = False   ; True: SensorOpened = 0 while the door rests fully open
+InvertedSensorClosed = False   ; True: SensorClosed = 0 while the door rests fully closed
+Impulse        = False     ; True: a telegram while moving halts the drive
+PushButton     = False     ; True: Action is the push button of the drive, the bit value does not matter
+```
+
+### Drive variants
+
+By default a motor is emulated: the bit sets the direction. For other drives:
+
+| Setting | Behaviour |
+|---|---|
+| `Impulse = True` | a drive with a stop state: a telegram while the door is moving halts it where it is (like `stop`), a telegram while it stands moves it as the bit asks |
+| `PushButton = True` | `Action` is the push button of the drive, the bit value does not matter. At an end position a press moves the door away from that end, after a half-way halt — in the opposite direction. A press while moving reverses the door, and together with `Impulse = True` halts it: the "open → close" and "open → stop → close → stop" cycles |
+| `ActionOpen` + `ActionClose` | two pulsed channels instead of `Action`: any telegram on `ActionOpen` opens, on `ActionClose` closes, the value does not matter. The addresses are set only as a pair, `Action` is not used then, and `Impulse` / `PushButton` do not affect the two channels. After that the same rules as for the bit apply: an opposite command reverses, a repeat is ignored |
+
+```ini
+[garage_relays]
+type         = garage_door
+ActionOpen   = 1/7/8       ; "open" pulse
+ActionClose  = 1/7/9       ; "close" pulse
+SensorOpened = 2/7/3
+SensorClosed = 2/7/4
 ```
 
 ## Control interface (REST)

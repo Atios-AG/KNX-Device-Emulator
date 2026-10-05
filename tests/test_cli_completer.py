@@ -1,4 +1,4 @@
-"""Tests of the contextual CLI completion."""
+"""Tests for the context-aware CLI completion."""
 
 import pytest
 

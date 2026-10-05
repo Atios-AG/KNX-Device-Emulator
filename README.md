@@ -1,4 +1,4 @@
-*[English](README.en.md) · Русский · [Deutsch](README.de.md)*
+*[English](README.en.md) · Русский*
 
 # KNX Device Emulator
 
@@ -19,6 +19,10 @@ pip install -r requirements.txt
 cp config.example.ini config.ini      # отредактируйте под своё окружение
 python main.py --config config.ini
 ```
+
+Ключи запуска: `--log-level DEBUG` — подробный лог; `--shutdown-timeout N` — сколько
+секунд ждать штатного завершения после Ctrl+C (по умолчанию 3; повторный Ctrl+C
+завершает сразу).
 
 ## Архитектура
 
@@ -77,7 +81,82 @@ class MyDevice(BaseDevice):
         return self.state_snapshot()
 ```
 
-Реестр подхватит его автоматически. В `config.ini` добавьте секцию с `type = my_device`.
+Реестр подхватит его автоматически. В `config.ini` добавьте секцию: `type`
+связывает её с плагином, остальные ключи — те, что устройство читает в
+`setup()` (здесь это групповые адреса):
+
+```ini
+[lamp0]
+type   = my_device
+Action = 1/1/1        ; сюда приходит команда (GroupValueWrite)
+Status = 2/1/1        ; отсюда читается и сюда рассылается статус
+```
+
+Вид телеграммы задаёт класс точки, настраивать его не нужно: `ActionPoint`
+принимает запись и вызывает обработчик, `StatusPoint` отвечает на чтение и
+рассылает значение при `publish()` и при старте.
+
+### Свой тип данных (DPT)
+
+Тип значения задаёт кодек DPT, который передаётся в точку. В ядре
+(`core/dpt.py`) есть:
+
+| Кодек | DPT | Значение |
+|---|---|---|
+| `DPT_BOOL` | 1.001 | бит; годится для любого однобитного типа (1.002, 1.008, 1.010 …) |
+| `DPT_SCALING` | 5.001 | 0..100 % |
+| `DPT_UCOUNT` | 5.010 | байт 0..255 |
+| `DPT_TEMPERATURE` | 9.001 | °C |
+| `DPT_AIR_QUALITY_PPM` | 9.008 | ppm |
+| `DPT_CONCENTRATION_UGM3` | 9.030 | µg/m³ |
+
+Если нужного нет, объявите его в том же файле устройства — ядро менять не нужно:
+
+```python
+from core.dpt import DPT
+from core.exceptions import DPTError
+
+class DPTPulses(DPT):
+    main, sub = 7, 1                   # DPT 7.001: два байта без знака
+    payload_kind = "array"
+
+    def encode(self, value) -> bytes:  # значение Python -> посылка на шину
+        v = int(value)
+        if not 0 <= v <= 0xFFFF:
+            raise DPTError(f"7.001 out of range 0..65535: {v}")
+        return bytes([v >> 8, v & 0xFF])
+
+    def decode(self, raw) -> int:      # посылка с шины -> значение Python
+        if len(raw) < 2:
+            raise DPTError("7.001: 2 bytes expected")
+        return (raw[0] << 8) | raw[1]
+
+DPT_PULSES = DPTPulses()               # передаётся в точку вместо DPT_BOOL
+```
+
+`payload_kind` определяет вид посылки: `"binary"` — значение до 6 бит, `encode`
+возвращает `int`, `decode` получает `int`; `"array"` — один или несколько байт,
+`encode` возвращает `bytes`, `decode` получает `bytes`. Так объявлены 20.105 и
+1.100 в `devices/thermostat.py`. Тип, нужный нескольким устройствам, лучше
+положить в `core/dpt.py`.
+
+## Устройства
+
+| `type` | Объекты на шине | Команды с панели | Примечание |
+|---|---|---|---|
+| `outlet` | `Action` / `Status` (DPT 1.001) | `toggle`, `set on=` | `Inverted` инвертирует состояние относительно шины |
+| `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set_level level=` | |
+| `thermostat` | уставка и текущая температура (9.001), режим (20.105), On/Off (1.001), сезон (1.100) | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | см. раздел ниже |
+| `air_conditioner` | всё от `thermostat` и вентилятор `ActionFan` / `StatusFan` (5.001, 0..100 %) | те же и `set_fan level=` | |
+| `fan` | `ActionFan` / `StatusFan` — номер ступени одним байтом (5.010) | `set_speed speed=`, `off` | `Speeds` — число ступеней, 1..4; ступень выше последней отбрасывается |
+| `fan_relay` | `ActionSpeedN` / `StatusSpeedN` — реле на каждую ступень (1.001) | `set_speed speed=`, `off` | проверяет алгоритм актуатора: сначала выключить все обмотки, потом включить нужную; нарушения пишутся в лог как ошибки |
+| `air_quality_sensor` | только статусы: `StatusAQI` (5.010), `StatusCO2` / `StatusTVOC` / `StatusCH2O` (9.008), `StatusPM1` / `StatusPM2_5` / `StatusPM10` (9.030) | `<датчик> set=`, например `co2 set=400` | работает тот датчик, чей адрес задан; `CycleSec` — период циклической рассылки |
+| `garage_door` | `Action` (1.008) или пара `ActionOpen` / `ActionClose`; статусы — бит, проценты, два датчика | `open`, `close`, `stop` | см. раздел ниже |
+| `shutter` | `Movement` (1.008), `Stop` (1.010), `TargetPosition` / `CurrentPosition` (5.001), `StatusMovement` (1.008) | `up`, `down`, `stop`, `position percent=` | `0 %` = открыто, `100 %` = закрыто; позиция сообщается, когда привод остановился |
+
+Все ключи конфигурации с примером секции для каждого типа — в
+`config.example.ini`; поведение устройства описано в начале его файла
+(`devices/*.py`).
 
 ## Термостат / кондиционер: режимы
 
@@ -107,8 +186,9 @@ class MyDevice(BaseDevice):
 
 ## Гаражные ворота: время хода и варианты статуса
 
-Тип `garage_door`. Единственный орган управления — бит `Action` (DPT 1.008):
-`0` = открыть (Up), `1` = закрыть (Down); `Inverted = True` меняет их местами.
+Тип `garage_door`. По умолчанию орган управления — бит `Action` (DPT 1.008):
+`0` = открыть (Up), `1` = закрыть (Down); `Inverted = True` меняет их местами
+(импульсные и релейные приводы — в подразделе «Варианты привода»).
 Как настоящий привод, ворота едут `TravelSec` секунд от одного крайнего
 положения до другого. Встречная команда во время движения разворачивает ворота
 из текущей виртуальной позиции — остаток пути занимает пропорциональное время.
@@ -121,8 +201,8 @@ class MyDevice(BaseDevice):
 | Ключ | DPT | Поведение |
 |---|---|---|
 | `Status` | 1.008 | один бит, следует семантике команды: `1` = закрыто (при `Inverted` — `1` = открыто). Обновляется только в крайних положениях |
-| `StatusPosition` | 5.001 | `0 %` = закрыто, `100 %` = открыто. Обновляется только в крайних положениях |
-| `SensorOpened` / `SensorClosed` | 1.002 | два концевых датчика, `1` = ворота стоят у этого края |
+| `StatusPosition` | 5.001 | `0 %` = закрыто, `100 %` = открыто (`InvertedPosition = True` переворачивает шкалу). Обновляется только в крайних положениях |
+| `SensorOpened` / `SensorClosed` | 1.002 | два концевых датчика, `1` = ворота стоят у этого края (`InvertedSensorOpened` / `InvertedSensorClosed = True`: у края `0`, как нормально замкнутый контакт) |
 
 Последовательность датчиков при открытии из закрытого состояния:
 
@@ -148,7 +228,31 @@ SensorOpened   = 2/7/3     ; датчик «открыто» (необязате
 SensorClosed   = 2/7/4     ; датчик «закрыто» (необязательно)
 TravelSec      = 15        ; время полного хода, с (по умолчанию 10)
 State          = closed    ; начальное состояние: closed | open
-Inverted       = False
+Inverted       = False     ; True: команда 1 = открыть, бит-статус 1 = открыто
+InvertedPosition     = False   ; True: 0 % = открыто, 100 % = закрыто
+InvertedSensorOpened = False   ; True: SensorOpened = 0, когда ворота полностью открыты
+InvertedSensorClosed = False   ; True: SensorClosed = 0, когда ворота полностью закрыты
+Impulse        = False     ; True: телеграмма во время движения останавливает привод
+PushButton     = False     ; True: Action — кнопка привода, значение бита не важно
+```
+
+### Варианты привода
+
+По умолчанию эмулируется мотор: бит задаёт направление. Для других приводов:
+
+| Настройка | Поведение |
+|---|---|
+| `Impulse = True` | привод со стоп-состоянием: телеграмма во время движения останавливает ворота на месте (как `stop`), телеграмма стоящим воротам двигает их, как просит бит |
+| `PushButton = True` | `Action` — кнопка привода, значение бита не важно. В крайнем положении нажатие уводит ворота от этого края, после остановки на полпути — в обратную сторону. Нажатие на ходу разворачивает ворота, а вместе с `Impulse = True` останавливает их: циклы «открыть → закрыть» и «открыть → стоп → закрыть → стоп» |
+| `ActionOpen` + `ActionClose` | два импульсных канала вместо `Action`: любая телеграмма на `ActionOpen` открывает, на `ActionClose` закрывает, значение не важно. Адреса задаются только парой, `Action` при этом не используется, `Impulse` и `PushButton` на два канала не влияют. Дальше действуют те же правила, что и для бита: встречная команда разворачивает, повтор игнорируется |
+
+```ini
+[garage_relays]
+type         = garage_door
+ActionOpen   = 1/7/8       ; импульс «открыть»
+ActionClose  = 1/7/9       ; импульс «закрыть»
+SensorOpened = 2/7/3
+SensorClosed = 2/7/4
 ```
 
 ## Интерфейс управления (REST)

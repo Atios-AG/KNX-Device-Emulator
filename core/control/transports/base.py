@@ -1,9 +1,9 @@
-"""Base class of a control transport.
+"""Base class for control transports.
 
 A transport delivers commands from the outside in and calls the single
 ControlInterface.execute(). All the transports are interchangeable; adding a
-new one (MQTT, for example) means one more file next to these, by analogy with
-the device plugins.
+new one (MQTT, for example) means one more file next to these, same as a
+device plugin.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from ..interface import ControlInterface
 
 
 class ControlTransport:
-    #: name used for the selection via [control] transport = ...
+    #: the name used in [control] transport = ...
     NAME: str = ""
 
     def __init__(self, interface: ControlInterface, config: dict[str, str]):

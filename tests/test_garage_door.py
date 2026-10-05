@@ -131,7 +131,7 @@ def test_statuses_are_optional_and_independent():
     bus.inject(ACTION, "write", 0)
     dev._clock.advance(10)
     dev._arrive()
-    assert bus.writes == []  # nothing to report with, still fully functional
+    assert bus.writes == []  # no status objects to report on, but the door still works
     assert dev.state == "open"
 
 

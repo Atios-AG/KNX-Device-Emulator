@@ -1,8 +1,8 @@
 """Virtual air conditioner (Room Air Conditioner).
 
-Fully repeats the thermostat (target/current temperature, target/current mode,
-On/Off, summer/winter mode) and adds one element — the **fan**, controlled by
-percentages 0..100 (DPT 5.001), a Control + Status channel.
+Everything the thermostat has (target/current temperature, target/current mode,
+On/Off, summer/winter mode), plus a **fan** set in percent 0..100 (DPT 5.001),
+a Control + Status channel.
 
 Implemented as a subclass of ThermostatDevice: all the climate logic and its
 local commands (set_onoff/set_mode/set_setpoint/set_current/set_season) are
@@ -26,7 +26,7 @@ class AirConditionerDevice(ThermostatDevice):
     TYPE = "air_conditioner"
 
     def setup(self) -> None:
-        super().setup()  # the whole climate part of the thermostat
+        super().setup()  # all the climate logic comes from the thermostat
 
         self._fan = max(0.0, min(100.0, float(self.config.get("Fan", 0.0))))
         self.action_fan = self.add(

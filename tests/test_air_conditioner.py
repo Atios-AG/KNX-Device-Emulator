@@ -35,7 +35,7 @@ def _setup(extra=None):
 def test_registered_as_separate_type():
     reg = DeviceRegistry(); reg.discover("devices")
     assert "air_conditioner" in reg.types
-    assert "thermostat" in reg.types  # the base type is in place too
+    assert "thermostat" in reg.types  # the base type is still there too
 
 
 def test_inherits_thermostat_commands_plus_fan():

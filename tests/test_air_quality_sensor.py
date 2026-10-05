@@ -77,7 +77,7 @@ def test_sensor_command_updates_and_emits_on_right_ga():
     res = control.execute(Command("air0", "co2", {"set": 1234}))
     assert res.ok
     assert res.state["co2"] == 1234.0
-    # the status went exactly to the CO2 address
+    # the status was sent to the CO2 address
     ga, value = bus.writes[-1]
     assert str(ga) == "3/0/7"
     assert value == 1234.0

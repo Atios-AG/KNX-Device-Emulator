@@ -1,4 +1,4 @@
-"""ControlInterface — the single entry point for control commands (one for all).
+"""ControlInterface — the single entry point for control commands, shared by every device.
 
 Routes the commands BY DEVICE NAME (unlike the bus, where the addressing is by
 Group Address). The command handling itself lives inside the device plugin; the

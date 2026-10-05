@@ -15,15 +15,15 @@ Logic (agreed with the customer):
      command (On/Off=off OR mode=off) switches the device off; (On/Off=on OR
      mode=heat/cool/auto) switches it on.
   3. The current mode simply mirrors the target one, without regard to the
-     temperature (in auto it is exactly auto that goes on the bus, not the
-     direction the device has picked).
+     temperature (in auto the bus sees plain auto, not the direction the
+     device has picked).
   4. Summer/Winter is an internal state, changed ONLY from the panel. Summer ->
      only cool is possible, Winter -> only heat. A command with an incompatible
      mode from the bus/panel is ignored; changing the season while an
      incompatible mode is active switches the device off.
   5. AUTO (option 4 in 20.105) — the device decides on its own whether to heat
      or to cool by comparing the current temperature with the target one (with
-     the AutoHysteresis hysteresis). Auto is available ONLY when the seasonal
+     AutoHysteresis as the dead band). Auto is available ONLY when the seasonal
      mode is not activated (there is no StatusSeason in the config): with a
      season set, the direction is already fixed by the season.
 
@@ -243,7 +243,7 @@ class ThermostatDevice(BaseDevice):
         self._mode = mode
         self._on = True
         self._last_active_mode = mode
-        self._auto_action = None  # the auto decision is taken anew
+        self._auto_action = None  # auto has to decide again
         self._update_auto_action()
         self._publish_power_state()
 
@@ -280,9 +280,9 @@ class ThermostatDevice(BaseDevice):
     def _update_auto_action(self) -> str | None:
         """Recompute whether to heat or to cool right now (in auto mode only).
 
-        Hysteresis: leaving the dead band requires a deviation larger than
-        AutoHysteresis, while a heating/cooling that has started runs up to the
-        setpoint.
+        Hysteresis: the device starts heating or cooling only when the
+        temperature is off by more than AutoHysteresis, and once started it
+        keeps going until the setpoint.
         """
         if self._mode != "auto":
             self._auto_action = None
@@ -290,12 +290,12 @@ class ThermostatDevice(BaseDevice):
 
         prev = self._auto_action
         action = prev
-        # an action that has started is continued up to the target temperature...
+        # once heating/cooling has started, keep going to the setpoint...
         if action == "heat" and self._current >= self._setpoint:
             action = None
         elif action == "cool" and self._current <= self._setpoint:
             action = None
-        # ...while idling is left only outside the dead band
+        # ...and when idle, start only outside the dead band
         if action is None:
             if self._current < self._setpoint - self._auto_hyst:
                 action = "heat"
@@ -321,9 +321,8 @@ class ThermostatDevice(BaseDevice):
     def state_snapshot(self) -> dict:
         snapshot = super().state_snapshot()
         if self._mode == "auto":
-            # the direction chosen by auto does not go on the bus (the mode
-            # there is auto), but it is useful for a panel to see what the
-            # device is doing
+            # the direction auto picked is not sent to the bus (the mode there
+            # stays auto), but a panel wants to see what the device is doing
             snapshot["auto_action"] = self._auto_action
         return snapshot
 

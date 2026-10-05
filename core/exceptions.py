@@ -6,7 +6,7 @@ can tell the causes apart (broken config / no such device / bus error, etc.).
 
 
 class KnxSimError(Exception):
-    """Base exception of the project."""
+    """Base class for the project's exceptions."""
 
 
 # --- configuration ----------------------------------------------------------
@@ -36,7 +36,7 @@ class UnknownDeviceTypeError(DeviceError):
 
 
 class UnknownDeviceError(DeviceError):
-    """Lookup by name of a device instance that does not exist."""
+    """A device was looked up by a name that does not exist."""
 
 
 class DuplicateAddressError(DeviceError):

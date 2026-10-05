@@ -24,7 +24,7 @@ argument `set`, so that it can be picked with TAB in the CLI:
 `air_quality0 co2 set=400`. Optionally (CycleSec) the device cyclically
 re-broadcasts the current values to the bus, the way a hardware KNX sensor does.
 
-Config (any set of sensors — the one whose Status is set is present):
+Config (any set of sensors — a sensor exists when its Status is set):
     [air0]
     type       = air_quality_sensor
     StatusAQI   = 3/0/1            ; AQI  (DPT 5.010)

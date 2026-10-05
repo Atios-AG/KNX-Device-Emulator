@@ -92,7 +92,7 @@ class RelayFanDevice(BaseDevice):
             self.publish(point)
 
     def _check_switch_algorithm(self, winding: int) -> None:
-        """Break-before-make: all windings off (and told so) before an ON."""
+        """Break-before-make: before an ON every winding must be off and have been sent an OFF."""
         still_on = sorted(m for m, on in self._windings.items() if on and m != winding)
         if still_on:
             self.log.error(
