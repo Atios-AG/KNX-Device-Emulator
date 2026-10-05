@@ -57,6 +57,12 @@ Config:
     InvertedSensorOpened = False  ; True: SensorOpened 0 = door rests fully open
     InvertedSensorClosed = False  ; True: SensorClosed 0 = door rests fully closed
     Impulse        = False     ; True: a telegram while moving halts the drive
+    PushButton     = False     ; True: Action is the push button of the drive, the bit is ignored:
+                               ;   at rest a press moves the door away from the end it rests at (mid-way:
+                               ;   back from where it was heading), while moving it halts (Impulse = True)
+                               ;   or reverses (Impulse = False) — the open-stop-close-stop / open-close cycle
+    ActionOpen     = 1/7/8     ; optional — instead of Action: two channels, any telegram on ActionOpen opens,
+    ActionClose    = 1/7/9     ;   on ActionClose closes (a switch actuator with two pulsed channels)
 """
 
 from __future__ import annotations
@@ -87,6 +93,7 @@ class GarageDoorDevice(BaseDevice):
         self.inverted_sensor_opened = self.config.get_bool("InvertedSensorOpened", default=False)
         self.inverted_sensor_closed = self.config.get_bool("InvertedSensorClosed", default=False)
         self.impulse = self.config.get_bool("Impulse", default=False)
+        self.push_button = self.config.get_bool("PushButton", default=False)
         self._travel = self.config.get_float("TravelSec", self.DEFAULT_TRAVEL_SEC)
         if self._travel <= 0:
             raise InvalidValueError(
@@ -112,14 +119,27 @@ class GarageDoorDevice(BaseDevice):
         self._arrival_due = 0.0
         #: the last end position reached — what the bit and the % report
         self._last_end = initial
+        #: direction of the last travel, +1 / -1: what the next push of the button undoes
+        self._last_direction = 1 if initial == OPEN else -1
         self._timer: asyncio.TimerHandle | None = None
         #: monotonic clock; tests replace it with a fake one
         self._clock = time.monotonic
 
         # --- group objects --------------------------------------------------
-        self.action = self.add(
-            ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_action)
-        )
+        self.action: ActionPoint | None = None
+        self.action_open: ActionPoint | None = None
+        self.action_close: ActionPoint | None = None
+        if "ActionOpen" in self.config or "ActionClose" in self.config:
+            self.action_open = self.add(
+                ActionPoint("action_open", self.config.get_ga("ActionOpen"), DPT_BOOL, self.on_action_open)
+            )
+            self.action_close = self.add(
+                ActionPoint("action_close", self.config.get_ga("ActionClose"), DPT_BOOL, self.on_action_close)
+            )
+        else:
+            self.action = self.add(
+                ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_action)
+            )
         self.status: StatusPoint | None = None
         self.status_position: StatusPoint | None = None
         self.sensor_opened: StatusPoint | None = None
@@ -152,6 +172,9 @@ class GarageDoorDevice(BaseDevice):
 
     # --- bus -----------------------------------------------------------------
     def on_action(self, bus_value: bool) -> None:
+        if self.push_button:
+            self._push(int(bus_value))
+            return
         # DPT 1.008: 0 = up (open), 1 = down (close); Inverted swaps them
         if self.impulse and self._direction != 0:
             self.log.info(
@@ -160,6 +183,36 @@ class GarageDoorDevice(BaseDevice):
             self._stop()
             return
         self._command(CLOSING if self._invert(bus_value) else OPENING)
+
+    def on_action_open(self, bus_value: bool) -> None:
+        # two channels: any telegram on the channel is a pulse, the value does not matter
+        self.log.info("pulse (value %d) on the open channel while %s", int(bus_value), self.state)
+        self._command(OPENING)
+
+    def on_action_close(self, bus_value: bool) -> None:
+        self.log.info("pulse (value %d) on the close channel while %s", int(bus_value), self.state)
+        self._command(CLOSING)
+
+    def _push(self, value: int) -> None:
+        """One press of the drive's push button (PushButton = True): the value is ignored."""
+        if self._direction != 0:
+            if self.impulse:
+                self.log.info("push (value %d) while %s: halting the drive", value, self.state)
+                self._stop()
+            else:
+                motion = CLOSING if self._direction > 0 else OPENING
+                self.log.info("push (value %d) while %s: reversing", value, self.state)
+                self._command(motion)
+            return
+        pos = self.current_position()
+        if pos >= 1.0:
+            motion = CLOSING
+        elif pos <= 0.0:
+            motion = OPENING
+        else:
+            motion = CLOSING if self._last_direction > 0 else OPENING
+        self.log.info("push (value %d) while %s: %s", value, self.state, motion)
+        self._command(motion)
 
     def read_status(self) -> bool:
         """One-bit status: follows the command semantics (1 = closed by default)."""
@@ -256,6 +309,7 @@ class GarageDoorDevice(BaseDevice):
         self._move_started = now
         self._arrival_due = now + remaining
         self._direction = direction
+        self._last_direction = direction
         self.log.info(
             "%s from %.0f %% — fully %s in %.1f s", motion, pos * 100, target, remaining
         )
