@@ -52,6 +52,11 @@ class DimmerDevice(BaseDevice):
     def cmd_toggle(self) -> dict:
         return self._apply(on=not self._on)
 
+    @local_command("set", description="Set on/off (on restores the last level, or 100 %)",
+                   args_schema={"on": bool})
+    def cmd_set(self, on: bool) -> dict:
+        return self._apply(on=on)
+
     @local_command("set_level", description="Set the brightness", args_schema={"level": float})
     def cmd_set_level(self, level: float) -> dict:
         return self._apply(level=level)
