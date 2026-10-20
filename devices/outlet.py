@@ -11,6 +11,7 @@ Config:
     Action   = 1/1/1
     Status   = 2/2/2
     Inverted = True      ; the physical state is inverted relative to the bus
+    On       = False     ; initial physical state (False by default)
 """
 
 from core.datapoint import ActionPoint, StatusPoint
@@ -23,7 +24,7 @@ class OutletDevice(BaseDevice):
 
     def setup(self) -> None:
         self.inverted = self.config.get_bool("Inverted", default=False)
-        self._state = False  # the physical state of the relay (on/off)
+        self._state = self.config.get_bool("On", default=False)  # the physical state of the relay (on/off)
 
         self.action = self.add(
             ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_action)

@@ -9,6 +9,7 @@ Config:
     ActionDim = 1/2/2     ; set the level 0..100 %
     Status    = 2/2/1     ; on/off status
     StatusDim = 2/2/2     ; level status
+    Level     = 0         ; initial level 0..100 %, on when above 0 (0 by default)
 """
 
 from core.datapoint import ActionPoint, StatusPoint
@@ -20,8 +21,8 @@ class DimmerDevice(BaseDevice):
     TYPE = "dimmer"
 
     def setup(self) -> None:
-        self._on = False
-        self._level = 0.0
+        self._level = max(0.0, min(100.0, self.config.get_float("Level", 0.0)))
+        self._on = self._level > 0
 
         self.action = self.add(
             ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_switch)

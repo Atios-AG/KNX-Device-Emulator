@@ -7,12 +7,13 @@ from core.registry import DeviceRegistry
 from tests.fakes import FakeBusAdapter
 
 
-def _setup(inverted=False):
+def _setup(inverted=False, **extra):
     cfg = DeviceConfig("outlet0", {
         "type": "outlet",
         "Action": "1/1/1",
         "Status": "2/2/2",
         "Inverted": str(inverted),
+        **extra,
     })
     reg = DeviceRegistry()
     reg.discover("devices")
@@ -66,3 +67,10 @@ def test_describe_lists_commands():
     info = control.describe_device("outlet0")
     names = {c["name"] for c in info["commands"]}
     assert {"toggle", "set"} <= names
+
+
+def test_initial_state_from_config():
+    mgr, bus, _ = _setup(On="True")
+    mgr.get_device("outlet0").publish_all_status()
+    assert mgr.get_device("outlet0").state_snapshot() == {"on": True}
+    assert bus.last_write_value() is True

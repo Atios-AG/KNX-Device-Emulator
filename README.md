@@ -146,8 +146,8 @@ need the same type, put it in `core/dpt.py` instead.
 
 | `type` | Objects on the bus | Panel commands | Notes |
 |---|---|---|---|
-| `outlet` | `Action` / `Status` (DPT 1.001) | `toggle`, `set on=` | `Inverted` flips the state relative to the bus |
-| `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set_level level=` | |
+| `outlet` | `Action` / `Status` (DPT 1.001) | `toggle`, `set on=` | `Inverted` flips the state relative to the bus; `On` is the initial state |
+| `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set on=`, `set_level level=` | `Level` is the initial level |
 | `thermostat` | setpoint and current temperature (9.001), mode (20.105), On/Off (1.001), season (1.100) | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see the section below |
 | `air_conditioner` | everything the `thermostat` has, plus a fan: `ActionFan` / `StatusFan` (5.001, 0..100 %) | the same, plus `set_fan level=` | |
 | `fan` | `ActionFan` / `StatusFan` — the speed step as one byte (5.010) | `set_speed speed=`, `off` | `Speeds` is the number of steps, 1..4; a step above the last one is dropped |
