@@ -7,11 +7,12 @@ from core.registry import DeviceRegistry
 from tests.fakes import FakeBusAdapter
 
 
-def _setup():
+def _setup(**extra):
     cfg = DeviceConfig("dim0", {
         "type": "dimmer",
         "Action": "1/2/1", "ActionDim": "1/2/2",
         "Status": "2/2/1", "StatusDim": "2/2/2",
+        **extra,
     })
     reg = DeviceRegistry()
     reg.discover("devices")
@@ -43,3 +44,10 @@ def test_bus_write_on_the_dim_address_sets_the_level():
     bus.inject("1/2/2", "write", bytes([128]))
     snap = dev.state_snapshot()
     assert snap["on"] is True and abs(snap["level"] - 50.2) < 0.5
+
+
+def test_initial_level_from_config():
+    dev, bus, _ = _setup(Level="60")
+    dev.publish_all_status()
+    assert dev.state_snapshot() == {"on": True, "level": 60.0}
+    assert [v for _, v in bus.writes] == [True, 60.0]

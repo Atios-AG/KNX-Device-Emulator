@@ -10,6 +10,7 @@ Config:
     type     = binary_sensor
     Status   = 3/0/1
     Inverted = False     ; True: the bus carries 0 for detected, 1 for idle
+    On       = False     ; initial detected state (False by default)
 """
 
 from core.datapoint import StatusPoint
@@ -22,7 +23,7 @@ class BinarySensorDevice(BaseDevice):
 
     def setup(self) -> None:
         self.inverted = self.config.get_bool("Inverted", default=False)
-        self._detected = False
+        self._detected = self.config.get_bool("On", default=False)
 
         self.status = self.add(
             StatusPoint("on", self.config.get_ga("Status"), DPT_BOOL, self.read_status)

@@ -12,6 +12,7 @@ from core.registry import DeviceRegistry
 from tests.fakes import FakeBusAdapter
 
 MOVE, STOP, TARGET, CURRENT, MOVE_STATUS = "3/1/1", "3/1/3", "3/1/4", "3/1/5", "3/1/2"
+TILT, TILT_STATUS = "3/1/6", "3/1/7"
 
 _BASE = {
     "type": "shutter",
@@ -73,9 +74,18 @@ def test_initial_position_from_config():
     assert _writes(bus) == [(CURRENT, 100.0), (MOVE_STATUS, True)]
 
 
-def test_movement_required():
+def test_movement_or_target_required():
     with pytest.raises(MissingOptionError):
-        _setup(remove=("Movement",))
+        _setup(remove=("Movement", "TargetPosition"))
+
+
+def test_position_only_without_movement():
+    dev, bus, _ = _setup(remove=("Movement",))
+    bus.inject(TARGET, "write", bytes([255]))
+    assert dev.state == "closing"
+    dev._clock.advance(10)
+    dev._arrive()
+    assert _writes(bus) == [(CURRENT, 100.0), (MOVE_STATUS, True)]
 
 
 def test_bad_position_rejected():
@@ -144,3 +154,52 @@ def test_local_commands():
     assert dev.state_snapshot()["position"] == 25.0
     dev.cmd_up()
     assert dev.state == "opening"
+
+
+def _tilt_setup(extra=None):
+    dev, bus, ctl = _setup({"TargetTilt": TILT, "CurrentTilt": TILT_STATUS, "TiltSec": "2", **(extra or {})})
+    delays = []
+    dev._later = lambda delay, callback: delays.append(delay) or "timer"
+    return dev, bus, ctl, delays
+
+
+def test_tilt_reported_when_the_slats_rest():
+    dev, bus, _, delays = _tilt_setup()
+    bus.inject(TILT, "write", bytes([153]))  # 60 % on the wire
+    assert delays == [pytest.approx(1.2)]
+    assert _writes(bus) == []
+    dev._tilt_arrive()
+    assert _writes(bus) == [(TILT_STATUS, 60.0)]
+    assert dev.state_snapshot()["tilt"] == 60.0
+
+
+def test_tilt_is_independent_of_the_lift():
+    dev, bus, _, _ = _tilt_setup({"Tilt": "40"})
+    bus.inject(MOVE, "write", 1)
+    dev._clock.advance(10)
+    dev._arrive()
+    assert _writes(bus) == [(CURRENT, 100.0), (MOVE_STATUS, True)]
+    assert dev.state_snapshot()["tilt"] == 40.0
+
+
+def test_tilt_same_target_is_ignored():
+    dev, bus, _, delays = _tilt_setup()
+    dev.cmd_tilt(percent=0)
+    assert delays == [] and _writes(bus) == []
+
+
+def test_tilt_local_command_and_initial_status():
+    dev, bus, _, delays = _tilt_setup({"Tilt": "100"})
+    dev.publish_all_status()
+    assert (TILT_STATUS, 100.0) in _writes(bus)
+    dev.cmd_tilt(percent=25)
+    assert delays == [pytest.approx(1.5)]
+    dev._tilt_arrive()
+    assert _writes(bus)[-1] == (TILT_STATUS, 25.0)
+
+
+def test_bad_tilt_options_rejected():
+    with pytest.raises(InvalidValueError):
+        _setup({"TiltSec": "0"})
+    with pytest.raises(InvalidValueError):
+        _setup({"Tilt": "-1"})

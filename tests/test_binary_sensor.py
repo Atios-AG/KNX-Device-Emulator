@@ -7,11 +7,12 @@ from core.registry import DeviceRegistry
 from tests.fakes import FakeBusAdapter
 
 
-def _setup(inverted=False):
+def _setup(inverted=False, **extra):
     cfg = DeviceConfig("motion0", {
         "type": "binary_sensor",
         "Status": "3/0/1",
         "Inverted": str(inverted),
+        **extra,
     })
     reg = DeviceRegistry()
     reg.discover("devices")
@@ -63,3 +64,10 @@ def test_a_write_to_the_status_address_does_not_change_the_sensor():
     mgr, bus, control = _setup()
     bus.inject("3/0/1", "write", 1)
     assert mgr.get_device("motion0").state_snapshot() == {"on": False}
+
+
+def test_initial_state_from_config():
+    mgr, bus, _ = _setup(On="True")
+    mgr.get_device("motion0").publish_all_status()
+    assert mgr.get_device("motion0").state_snapshot() == {"on": True}
+    assert bus.last_write_value() is True
