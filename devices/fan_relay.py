@@ -6,12 +6,12 @@ address. The fan is passive — it only mirrors the relay commands into the
 winding states and never switches anything off by itself.
 
 Its job is to *verify* the actuator's switching algorithm: on a speed
-change the actuator must first switch OFF all the windings and only then
-switch ON the needed one (break-before-make). Violations are written to
+change the actuator must first switch OFF all the other windings and only
+then switch ON the needed one (break-before-make). Violations are written to
 the log as errors:
 
   * a winding is switched on while another winding is still energized;
-  * on a speed change the actuator did not send OFF to every winding
+  * on a speed change the actuator did not send OFF to every other winding
     before sending the ON.
 
 An optional main relay (`ActionOn` / `StatusOn`) is switched on its own,
@@ -115,7 +115,7 @@ class RelayFanDevice(BaseDevice):
             self.publish(self.status_on)
 
     def _check_switch_algorithm(self, winding: int) -> None:
-        """Break-before-make: before an ON every winding must be off and have been sent an OFF."""
+        """Break-before-make: before an ON every other winding must be off and have been sent an OFF."""
         still_on = sorted(m for m, on in self._windings.items() if on and m != winding)
         if still_on:
             self.log.error(
@@ -124,12 +124,12 @@ class RelayFanDevice(BaseDevice):
                 winding, still_on,
             )
         if self._last_on is not None and self._last_on != winding:
-            missing = sorted(self._all - self._offs)
+            missing = sorted(self._all - self._offs - {winding})   # the new winding is off already
             if missing:
                 self.log.error(
                     "switching algorithm violated: switch from winding %d to %d "
                     "without OFF for winding(s) %s — the actuator must switch off "
-                    "all windings before the new ON",
+                    "all other windings before the new ON",
                     self._last_on, winding, missing,
                 )
 

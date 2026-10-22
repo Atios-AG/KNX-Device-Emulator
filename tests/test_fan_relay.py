@@ -87,7 +87,7 @@ def test_partial_off_before_switch_logs_error(caplog):
         bus.inject("1/6/3", "write", 1)
     errors = _errors(caplog)
     assert len(errors) == 1
-    assert "without OFF for winding(s) [1, 3]" in errors[0].getMessage()
+    assert "without OFF for winding(s) [1]" in errors[0].getMessage()
     assert dev.state_snapshot() == {"speed1": False, "speed2": False, "speed3": True}
 
 
@@ -190,3 +190,12 @@ def test_main_relay_is_separate_from_the_windings():
     assert dev.state_snapshot() == {"on": False, "speed1": True, "speed2": False}
     assert ControlInterface(mgr).execute(Command("fr0", "set", {"on": True})).state["on"] is True
 
+
+def test_off_to_every_other_winding_is_enough(caplog):
+    dev, bus, ctl = _setup({"Speed": "1"})
+    with caplog.at_level(logging.INFO):
+        bus.inject("1/6/1", "write", 0)   # the KD bridge: every other winding off ...
+        bus.inject("1/6/3", "write", 0)
+        bus.inject("1/6/2", "write", 1)   # ... then the new one on
+    assert _errors(caplog) == []
+    assert dev.state_snapshot()["speed2"] is True
