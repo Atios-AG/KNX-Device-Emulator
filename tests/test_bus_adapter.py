@@ -183,3 +183,27 @@ def test_device_status_reaches_the_wire_through_the_real_adapter():
     assert status.payload.value == DPTBinary(1)
     assert (str(answer.destination_address), type(answer.payload)) == ("2/2/2", GroupValueResponse)
     assert answer.payload.value == DPTBinary(1)
+
+
+@pytest.mark.parametrize("connection, expected", [("tunneling", "TUNNELING"), ("tunneling_tcp", "TUNNELING_TCP"),
+                                                  ("routing", "ROUTING")])
+def test_connection_type_from_the_config(monkeypatch, connection, expected):
+    import xknx
+    from xknx.io import ConnectionType
+
+    seen = {}
+
+    class FakeXKNX:
+        def __init__(self, connection_config):
+            seen["config"] = connection_config
+            self.telegram_queue = SimpleNamespace(register_telegram_received_cb=lambda cb: None)
+
+        async def start(self):
+            pass
+
+    monkeypatch.setattr(xknx, "XKNX", FakeXKNX)
+    adapter = KNXIPBusAdapter({"connection": connection, "gateway_ip": "192.168.1.10"})
+    asyncio.run(adapter.connect())
+    assert seen["config"].connection_type is ConnectionType[expected]
+    if connection != "routing":
+        assert seen["config"].gateway_ip == "192.168.1.10"

@@ -47,6 +47,17 @@ class KNXIPBusAdapter(BusAdapter):
         mode = self._config.get("connection", "tunneling").lower()
         if mode == "routing":
             conn = ConnectionConfig(connection_type=ConnectionType.ROUTING)
+        elif mode == "tunneling_tcp":
+            gateway_ip = self._config.get("gateway_ip")
+            if not gateway_ip:
+                raise BusError("tunneling_tcp requires gateway_ip in [knx]")
+            # TCP delivers in order, the gateway sends no per-telegram ACK to wait for
+            conn = ConnectionConfig(
+                connection_type=ConnectionType.TUNNELING_TCP,
+                gateway_ip=gateway_ip,
+                gateway_port=int(self._config.get("gateway_port", 3671)),
+                local_ip=self._config.get("local_ip"),
+            )
         else:
             gateway_ip = self._config.get("gateway_ip")
             if not gateway_ip:
