@@ -100,3 +100,14 @@ def test_status_is_optional():
     bus.inject("1/5/1", "write", DPT_UCOUNT.encode(2))
     assert dev._speed == 2
     assert bus.writes == []  # nothing is broadcast without a StatusFan
+
+
+def test_on_off_object_is_coupled_to_the_step():
+    dev, bus, ctl = _setup({"ActionOn": "1/5/2", "StatusOn": "2/5/2", "Speed": "2"})
+    bus.inject("1/5/2", "write", 0)
+    assert dev.state_snapshot() == {"speed": 0, "on": False}
+    bus.inject("1/5/2", "write", 1)                    # resumes the last step
+    assert dev.state_snapshot() == {"speed": 2, "on": True}
+    bus.inject("1/5/1", "write", bytes([0]))
+    assert dev.state_snapshot()["on"] is False
+    assert ctl.execute(Command("fan0", "set", {"on": True})).state == {"speed": 2, "on": True}

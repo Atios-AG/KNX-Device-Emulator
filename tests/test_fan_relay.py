@@ -173,3 +173,20 @@ def test_statuses_are_optional(caplog):
         bus.inject("1/6/3", "write", 1)   # winding 2 still on — violation
     assert bus.writes == []               # nothing to broadcast without status GAs
     assert _errors(caplog)                # ...but the violation is still detected
+
+
+def test_main_relay_is_separate_from_the_windings():
+    data = {"type": "fan_relay", "Speeds": "2", "ActionSpeed1": "1/6/1", "StatusSpeed1": "2/6/1",
+            "ActionSpeed2": "1/6/2", "StatusSpeed2": "2/6/2", "ActionOn": "1/6/9", "StatusOn": "2/6/9",
+            "Speed": "1"}
+    cfg = DeviceConfig("fr0", data)
+    reg = DeviceRegistry(); reg.discover("devices")
+    bus = FakeBusAdapter()
+    mgr = DeviceManager(reg, bus)
+    mgr.build(AppConfig(knx={}, control={}, devices=[DeviceEntry("fr0", "fan_relay", cfg)]))
+    dev = mgr.get_device("fr0")
+    assert dev.state_snapshot() == {"on": True, "speed1": True, "speed2": False}
+    bus.inject("1/6/9", "write", 0)
+    assert dev.state_snapshot() == {"on": False, "speed1": True, "speed2": False}
+    assert ControlInterface(mgr).execute(Command("fr0", "set", {"on": True})).state["on"] is True
+

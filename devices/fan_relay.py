@@ -14,6 +14,9 @@ the log as errors:
   * on a speed change the actuator did not send OFF to every winding
     before sending the ON.
 
+An optional main relay (`ActionOn` / `StatusOn`) is switched on its own,
+independently of the windings.
+
 Config:
     [fan_ceiling]
     type         = fan_relay
@@ -25,6 +28,9 @@ Config:
     ActionSpeed3 = 1/6/3
     StatusSpeed3 = 2/6/3
     Speed        = 0          ; initial step (optional, 0 = off)
+    ActionOn     = 1/6/9      ; optional, main on/off relay (DPT 1.001), separate from the windings
+    StatusOn     = 2/6/9      ; optional, main relay status (DPT 1.001)
+    On           = True       ; initial main relay state (on when Speed is above 0 by default)
 """
 
 from functools import partial
@@ -61,6 +67,18 @@ class RelayFanDevice(BaseDevice):
         #: windings that received OFF since the last ON telegram
         self._offs: set[int] = set()
 
+        #: the main relay, switched independently of the windings
+        self._on = self.config.get_bool("On", initial > 0)
+        if "ActionOn" in self.config:
+            self.add(
+                ActionPoint("a_on", self.config.get_ga("ActionOn"), DPT_BOOL, self.on_switch)
+            )
+        self.status_on: StatusPoint | None = None
+        if "StatusOn" in self.config:
+            self.status_on = self.add(
+                StatusPoint("on", self.config.get_ga("StatusOn"), DPT_BOOL, lambda: self._on)
+            )
+
         self._statuses: dict[int, StatusPoint] = {}
         for n in sorted(self._all):
             self.add(
@@ -91,6 +109,11 @@ class RelayFanDevice(BaseDevice):
         if point is not None:
             self.publish(point)
 
+    def on_switch(self, value: bool) -> None:
+        self._on = bool(value)
+        if self.status_on is not None:
+            self.publish(self.status_on)
+
     def _check_switch_algorithm(self, winding: int) -> None:
         """Break-before-make: before an ON every winding must be off and have been sent an OFF."""
         still_on = sorted(m for m, on in self._windings.items() if on and m != winding)
@@ -119,6 +142,11 @@ class RelayFanDevice(BaseDevice):
             )
         self._force_speed(speed)
         return {"speed": speed}
+
+    @local_command("set", description="Main relay on/off", args_schema={"on": bool})
+    def cmd_set(self, on: bool) -> dict:
+        self.on_switch(on)
+        return self.state_snapshot()
 
     @local_command("off", description="Switch the fan off (all windings)")
     def cmd_off(self) -> dict:
