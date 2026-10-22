@@ -207,3 +207,14 @@ def test_connection_type_from_the_config(monkeypatch, connection, expected):
     assert seen["config"].connection_type is ConnectionType[expected]
     if connection != "routing":
         assert seen["config"].gateway_ip == "192.168.1.10"
+
+
+@pytest.mark.parametrize("config, message", [
+    ({"connection": "tunneling_tcp"}, "tunneling_tcp requires gateway_ip"),
+    ({"connection": "tunnelling_tcp", "gateway_ip": "192.168.1.10"}, "expected tunneling, tunneling_tcp or routing"),
+])
+def test_connection_config_errors(config, message):
+    from core.exceptions import BusError
+
+    with pytest.raises(BusError, match=message):
+        asyncio.run(KNXIPBusAdapter(config).connect())
