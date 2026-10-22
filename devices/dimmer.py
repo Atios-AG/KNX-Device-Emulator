@@ -5,9 +5,9 @@ Shows a device with several data points.
 Config:
     [dimmer_kitchen]
     type      = dimmer
-    Action    = 1/2/1     ; on/off
+    Action    = 1/2/1     ; optional, on/off
     ActionDim = 1/2/2     ; set the level 0..100 %
-    Status    = 2/2/1     ; on/off status
+    Status    = 2/2/1     ; optional, on/off status
     StatusDim = 2/2/2     ; level status
     Level     = 0         ; initial level 0..100 %, on when above 0 (0 by default)
 """
@@ -24,17 +24,21 @@ class DimmerDevice(BaseDevice):
         self._level = max(0.0, min(100.0, self.config.get_float("Level", 0.0)))
         self._on = self._level > 0
 
-        self.action = self.add(
-            ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_switch)
-        )
+        self.action: ActionPoint | None = None
+        if "Action" in self.config:
+            self.action = self.add(
+                ActionPoint("action", self.config.get_ga("Action"), DPT_BOOL, self.on_switch)
+            )
         self.action_dim = self.add(
             ActionPoint(
                 "action_dim", self.config.get_ga("ActionDim"), DPT_SCALING, self.on_dim
             )
         )
-        self.status = self.add(
-            StatusPoint("on", self.config.get_ga("Status"), DPT_BOOL, lambda: self._on)
-        )
+        self.status: StatusPoint | None = None
+        if "Status" in self.config:
+            self.status = self.add(
+                StatusPoint("on", self.config.get_ga("Status"), DPT_BOOL, lambda: self._on)
+            )
         self.status_dim = self.add(
             StatusPoint(
                 "level", self.config.get_ga("StatusDim"), DPT_SCALING, lambda: self._level
@@ -73,6 +77,11 @@ class DimmerDevice(BaseDevice):
                 self._level = 100.0
             if not self._on:
                 self._level = 0.0
-        self.publish(self.status)
+        if self.status is not None:
+            self.publish(self.status)
         self.publish(self.status_dim)
         return self.state_snapshot()
+
+    def state_snapshot(self) -> dict:
+        # on/off is part of the state also without a Status object
+        return {"on": self._on, "level": self._level}

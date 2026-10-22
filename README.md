@@ -147,7 +147,7 @@ need the same type, put it in `core/dpt.py` instead.
 | `type` | Objects on the bus | Panel commands | Notes |
 |---|---|---|---|
 | `outlet` | `Action` / `Status` (DPT 1.001) | `toggle`, `set on=` | `Inverted` flips the state relative to the bus; `On` is the initial state |
-| `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set on=`, `set_level level=` | `Level` is the initial level |
+| `dimmer` | `Action` / `Status` (1.001, optional), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set on=`, `set_level level=` | `Level` is the initial level; without `Action` / `Status` the level alone switches it |
 | `thermostat` | setpoint and current temperature (9.001), mode (20.105), On/Off (1.001), season (1.100) | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see the section below |
 | `air_conditioner` | everything the `thermostat` has, plus a fan: `ActionFan` / `StatusFan` (5.001, 0..100 %) | the same, plus `set_fan level=` | |
 | `room_thermostat` | setpoint and room temperature (9.001), On/Off (1.001), mode as a configured byte or a bit, season (1.100); every one optional | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see "Room thermostat: mode bytes" below |
