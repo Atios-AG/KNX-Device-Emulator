@@ -51,3 +51,14 @@ def test_initial_level_from_config():
     dev.publish_all_status()
     assert dev.state_snapshot() == {"on": True, "level": 60.0}
     assert [v for _, v in bus.writes] == [True, 60.0]
+
+
+def test_level_only_without_an_on_off_object():
+    cfg = DeviceConfig("d1", {"type": "dimmer", "ActionDim": "1/2/2", "StatusDim": "2/2/2", "Level": "40"})
+    reg = DeviceRegistry(); reg.discover("devices")
+    bus = FakeBusAdapter()
+    mgr = DeviceManager(reg, bus)
+    mgr.build(AppConfig(knx={}, control={}, devices=[DeviceEntry("d1", "dimmer", cfg)]))
+    bus.inject("1/2/2", "write", bytes([0]))
+    assert mgr.get_device("d1").state_snapshot() == {"on": False, "level": 0.0}
+    assert [str(ga) for ga, _ in bus.writes] == ["2/2/2"]
