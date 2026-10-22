@@ -4,7 +4,8 @@ A simulator of virtual KNX devices. You can run as many devices as you like, and
 on the bus they behave like real hardware: they react to commands
 (`GroupValueWrite`), answer when polled (`GroupValueRead` → `Response`) and send
 out their status on their own whenever their state changes. The emulator talks
-to the bus over **KNXnet/IP** — tunneling to your IP device, or routing.
+to the bus over **KNXnet/IP** — tunneling to your IP device (UDP, or TCP with
+`connection = tunneling_tcp`), or routing.
 
 There is also a **control interface**: one channel for changing a device's state
 "locally", as if someone had pressed a button on its panel. The device changes

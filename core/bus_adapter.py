@@ -5,10 +5,10 @@ The xknx import is lazy (inside the methods), so the rest of the core and the
 tests do not require xknx to be installed.
 
 The connection is configured by the [knx] section:
-    connection   = tunneling | routing
-    gateway_ip   = 192.168.1.10      (for tunneling)
+    connection   = tunneling | tunneling_tcp | routing
+    gateway_ip   = 192.168.1.10      (for tunneling and tunneling_tcp)
     gateway_port = 3671
-    local_ip     = 192.168.1.50      (optional)
+    local_ip     = 192.168.1.50      (optional, UDP tunneling only)
 """
 
 from __future__ import annotations
@@ -45,8 +45,22 @@ class KNXIPBusAdapter(BusAdapter):
             ) from exc
 
         mode = self._config.get("connection", "tunneling").lower()
+        if mode not in ("tunneling", "tunneling_tcp", "routing"):
+            raise BusError(
+                f"[knx] connection: expected tunneling, tunneling_tcp or routing, got '{mode}'"
+            )
         if mode == "routing":
             conn = ConnectionConfig(connection_type=ConnectionType.ROUTING)
+        elif mode == "tunneling_tcp":
+            gateway_ip = self._config.get("gateway_ip")
+            if not gateway_ip:
+                raise BusError("tunneling_tcp requires gateway_ip in [knx]")
+            # TCP delivers in order, the gateway sends no per-telegram ACK to wait for
+            conn = ConnectionConfig(
+                connection_type=ConnectionType.TUNNELING_TCP,
+                gateway_ip=gateway_ip,
+                gateway_port=int(self._config.get("gateway_port", 3671)),
+            )
         else:
             gateway_ip = self._config.get("gateway_ip")
             if not gateway_ip:
