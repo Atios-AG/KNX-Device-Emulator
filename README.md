@@ -150,6 +150,7 @@ need the same type, put it in `core/dpt.py` instead.
 | `dimmer` | `Action` / `Status` (1.001), `ActionDim` / `StatusDim` (5.001) | `toggle`, `set on=`, `set_level level=` | `Level` is the initial level |
 | `thermostat` | setpoint and current temperature (9.001), mode (20.105), On/Off (1.001), season (1.100) | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see the section below |
 | `air_conditioner` | everything the `thermostat` has, plus a fan: `ActionFan` / `StatusFan` (5.001, 0..100 %) | the same, plus `set_fan level=` | |
+| `room_thermostat` | setpoint and room temperature (9.001), On/Off (1.001), mode as a configured byte or a bit, season (1.100); every one optional | `set_onoff on=`, `set_mode mode=`, `set_setpoint value=`, `set_current value=`, `set_season season=` | see "Room thermostat: mode bytes" below |
 | `fan` | `ActionFan` / `StatusFan` — the speed step as one byte (5.010) | `set_speed speed=`, `off` | `Speeds` is the number of steps, 1..4; a step above the last one is dropped |
 | `fan_relay` | `ActionSpeedN` / `StatusSpeedN` — one relay per step (1.001) | `set_speed speed=`, `off` | checks how the actuator switches: all windings off first, then the right one on; violations are logged as errors |
 | `air_quality_sensor` | statuses only: `StatusAQI` (5.010), `StatusCO2` / `StatusTVOC` / `StatusCH2O` (9.008), `StatusPM1` / `StatusPM2_5` / `StatusPM10` (9.030) | `<sensor> set=`, e.g. `co2 set=400` | a sensor exists if its address is set; `CycleSec` is the period of the cyclic broadcast |
@@ -186,6 +187,26 @@ until `Setpoint`, so it doesn't flip back and forth. The bus still sees plain
 section has no `StatusSeason`. With a season set, the direction is already fixed
 (summer → `cool` only, winter → `heat` only), so an `auto` command from the bus
 or from the panel is ignored and a warning goes to the log.
+
+## Room thermostat: mode bytes
+
+`room_thermostat` takes the mode coding of the installation instead of fixed
+values: `ModeOff`, `ModeHeat`, `ModeCool` and `ModeAuto` are the bytes on
+`ActionMode` / `StatusMode`, for example DPT 20.105 with `ModeAuto = 0`,
+`ModeHeat = 1`, `ModeCool = 3`, `ModeOff = 6`. A byte that is not configured is
+ignored with a warning. Without `ModeOff` the mode has no off value, power is
+then on the on/off object only. With `ModeBit = True` both mode objects are one
+bit, on/off.
+
+| On the bus | Without `ActionOnOff` / `StatusOnOff` | With them (like an AC gateway) |
+|---|---|---|
+| a mode byte | sets the mode and switches on | sets the mode, power stays |
+| the off byte | switches off | switches off |
+| `StatusMode` while off | the off byte | the mode |
+
+The season (`StatusSeason`, 1 = heating) turns a heat or cool mode to the
+season's direction, `auto` stays; `SeasonInverted = True` sends 1 for cooling.
+A status is sent when its value changes and in reply to its own command.
 
 ## Garage door: travel time and status variants
 
