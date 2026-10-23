@@ -160,6 +160,51 @@ class DPTUCount(DPT):
         return int(raw)
 
 
+class DPTColorTemperature(DPT):
+    """7.600 — absolute color temperature in Kelvin, 2 bytes unsigned, big-endian."""
+
+    main, sub = 7, 600
+    unit = "K"
+    payload_kind = "array"
+
+    def encode(self, value) -> bytes:
+        try:
+            v = int(round(float(value)))
+        except (TypeError, ValueError) as exc:
+            raise DPTError(f"7.600 expects a number, got {value!r}") from exc
+        if not (0 <= v <= 0xFFFF):
+            raise DPTError(f"7.600 out of range 0..65535: {v}")
+        return v.to_bytes(2, "big")
+
+    def decode(self, raw: bytes) -> int:
+        if len(raw) != 2:
+            raise DPTError("7.600: 2 bytes expected")
+        return int.from_bytes(raw, "big")
+
+
+class DPTColor3Byte(DPT):
+    """232.600 — three bytes 0..255: red, green, blue, or (MDT and the Atios
+    KNX Bridge) hue, saturation, value. The value is the tuple of the bytes;
+    what they mean is up to the device."""
+
+    main, sub = 232, 600
+    payload_kind = "array"
+
+    def encode(self, value) -> bytes:
+        try:
+            out = bytes(int(b) for b in value)
+        except (TypeError, ValueError) as exc:
+            raise DPTError(f"232.600 expects three bytes 0..255, got {value!r}") from exc
+        if len(out) != 3:
+            raise DPTError(f"232.600 expects three bytes, got {value!r}")
+        return out
+
+    def decode(self, raw: bytes) -> tuple[int, int, int]:
+        if len(raw) != 3:
+            raise DPTError("232.600: 3 bytes expected")
+        return tuple(raw)
+
+
 # --- registry and factory ----------------------------------------------------
 DPT_BOOL = DPTBool()
 DPT_SCALING = DPTScaling()
@@ -167,8 +212,12 @@ DPT_TEMPERATURE = DPTTemperature()
 DPT_UCOUNT = DPTUCount()
 DPT_AIR_QUALITY_PPM = DPTAirQualityPpm()
 DPT_CONCENTRATION_UGM3 = DPTConcentrationUgm3()
+DPT_COLOR_TEMPERATURE = DPTColorTemperature()
+DPT_COLOR_3BYTE = DPTColor3Byte()
 
 _REGISTRY: dict[str, DPT] = {
+    DPT_COLOR_TEMPERATURE.dpt_id: DPT_COLOR_TEMPERATURE,
+    DPT_COLOR_3BYTE.dpt_id: DPT_COLOR_3BYTE,
     DPT_BOOL.dpt_id: DPT_BOOL,
     DPT_SCALING.dpt_id: DPT_SCALING,
     DPT_TEMPERATURE.dpt_id: DPT_TEMPERATURE,

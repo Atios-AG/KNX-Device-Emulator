@@ -3,6 +3,8 @@ import pytest
 from core.dpt import (
     DPT_AIR_QUALITY_PPM,
     DPT_BOOL,
+    DPT_COLOR_3BYTE,
+    DPT_COLOR_TEMPERATURE,
     DPT_CONCENTRATION_UGM3,
     DPT_SCALING,
     DPT_TEMPERATURE,
@@ -81,3 +83,37 @@ def test_dpt_from_string():
     assert dpt_from_string("9.030") is DPT_CONCENTRATION_UGM3
     with pytest.raises(DPTError):
         dpt_from_string("99.999")
+
+
+def test_color_temperature_is_two_bytes_big_endian():
+    assert DPT_COLOR_TEMPERATURE.encode(4000) == bytes([0x0F, 0xA0])
+    assert DPT_COLOR_TEMPERATURE.decode(bytes([0x0A, 0x8E])) == 2702
+    assert dpt_from_string("7.600") is DPT_COLOR_TEMPERATURE
+
+
+@pytest.mark.parametrize("bad", [-1, 65536, "warm", None])
+def test_color_temperature_out_of_range(bad):
+    with pytest.raises(DPTError):
+        DPT_COLOR_TEMPERATURE.encode(bad)
+
+
+def test_color_temperature_needs_two_bytes():
+    with pytest.raises(DPTError):
+        DPT_COLOR_TEMPERATURE.decode(bytes([1]))
+
+
+def test_color_3byte_roundtrip():
+    assert DPT_COLOR_3BYTE.encode((85, 255, 128)) == bytes([85, 255, 128])
+    assert DPT_COLOR_3BYTE.decode(bytes([85, 255, 128])) == (85, 255, 128)
+    assert dpt_from_string("232.600") is DPT_COLOR_3BYTE
+
+
+@pytest.mark.parametrize("bad", [(1, 2), (256, 0, 0), (-1, 0, 0), None, "red"])
+def test_color_3byte_rejects_anything_but_three_bytes(bad):
+    with pytest.raises(DPTError):
+        DPT_COLOR_3BYTE.encode(bad)
+
+
+def test_color_3byte_needs_three_bytes():
+    with pytest.raises(DPTError):
+        DPT_COLOR_3BYTE.decode(bytes([1, 2]))
