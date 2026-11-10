@@ -218,3 +218,77 @@ def test_connection_config_errors(config, message):
 
     with pytest.raises(BusError, match=message):
         asyncio.run(KNXIPBusAdapter(config).connect())
+
+
+def test_data_secure_round_trip_and_rejections():
+    # [secure]: our telegram is encrypted, a peer with the key reads it, and a
+    # plain, a wrongly keyed and a replayed telegram are all dropped.
+    pytest.importorskip("xknx")
+    from xknx.cemi import CEMILData
+    from xknx.dpt import DPTBinary
+    from xknx.exceptions import DataSecureError
+    from xknx.telegram import GroupAddress as XGA
+    from xknx.telegram import IndividualAddress, Telegram
+    from xknx.telegram.apci import GroupValueWrite, SecureAPDU
+
+    from core.bus_adapter import data_secure_from_keys
+    from core.exceptions import BusError
+
+    key = "000102030405060708090a0b0c0d0e0f"
+    ours, peer = data_secure_from_keys({"1/1/1": key}), data_secure_from_keys({"1/1/1": key})
+    stranger = data_secure_from_keys({"1/1/1": "ff" * 16})
+
+    def frame(ga):
+        return CEMILData.init_from_telegram(
+            Telegram(destination_address=XGA(ga), payload=GroupValueWrite(DPTBinary(1))),
+            src_addr=IndividualAddress("1.1.5"),
+        )
+
+    sent = ours.outgoing_cemi(frame("1/1/1"))
+    assert isinstance(sent.payload, SecureAPDU)
+    assert ours.outgoing_cemi(frame("1/1/2")).payload == GroupValueWrite(DPTBinary(1))  # not secured: plain
+
+    assert peer.received_cemi(sent).payload == GroupValueWrite(DPTBinary(1))
+    with pytest.raises(DataSecureError):
+        peer.received_cemi(sent)                # replay: the same sequence number again
+    with pytest.raises(DataSecureError):
+        peer.received_cemi(frame("1/1/1"))      # plain on a secured address
+    with pytest.raises(DataSecureError):
+        stranger.received_cemi(ours.outgoing_cemi(frame("1/1/1")))   # another key
+
+    with pytest.raises(BusError):
+        data_secure_from_keys({"1/1/1": "0011"})
+
+
+def test_secure_section_is_not_a_device(tmp_path):
+    from core.config_loader import ConfigLoader
+
+    ini = tmp_path / "c.ini"
+    ini.write_text("[secure]\n1/1/1 = 000102030405060708090a0b0c0d0e0f\n\n[o]\ntype = outlet\nAction = 1/1/1\nStatus = 1/1/2\n")
+    config = ConfigLoader.load(str(ini))
+    assert config.secure == {"1/1/1": "000102030405060708090a0b0c0d0e0f"}
+    assert [d.name for d in config.devices] == ["o"]
+
+
+def test_data_secure_survives_xknx_start(monkeypatch):
+    # xknx's start() sets data_secure from its keyring (none here, so None):
+    # the [secure] keys must be installed after it, or everything goes out plain.
+    pytest.importorskip("xknx")
+    import xknx
+
+    class FakeXKNX:
+        def __init__(self, **kwargs):
+            self.cemi_handler = SimpleNamespace(data_secure="set before start")
+            self.telegram_queue = SimpleNamespace(register_telegram_received_cb=lambda cb: None)
+
+        async def start(self):
+            self.cemi_handler.data_secure = None
+
+    monkeypatch.setattr(xknx, "XKNX", FakeXKNX)
+    adapter = KNXIPBusAdapter({"connection": "routing"}, {"1/1/1": "00" * 16})
+    asyncio.run(adapter.connect())
+    assert adapter._xknx.cemi_handler.data_secure is not None
+
+    plain = KNXIPBusAdapter({"connection": "routing"})
+    asyncio.run(plain.connect())
+    assert plain._xknx.cemi_handler.data_secure is None

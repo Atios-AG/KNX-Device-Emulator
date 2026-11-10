@@ -5,7 +5,9 @@ on the bus they behave like real hardware: they react to commands
 (`GroupValueWrite`), answer when polled (`GroupValueRead` → `Response`) and send
 out their status on their own whenever their state changes. The emulator talks
 to the bus over **KNXnet/IP** — tunneling to your IP device (UDP, or TCP with
-`connection = tunneling_tcp`), or routing.
+`connection = tunneling_tcp`), or routing. Group addresses listed with a key in
+a `[secure]` section use **KNX Data Secure**: sent encrypted, and plain, wrongly
+keyed or replayed telegrams to them are dropped (see `config.example.ini`).
 
 There is also a **control interface**: one channel for changing a device's state
 "locally", as if someone had pressed a button on its panel. The device changes

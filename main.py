@@ -72,7 +72,7 @@ async def run(config_path: str, shutdown_timeout: float = DEFAULT_SHUTDOWN_TIMEO
     registry.discover("devices")
     log.info("Available device types: %s", registry.types)
 
-    bus = KNXIPBusAdapter(config.knx)
+    bus = KNXIPBusAdapter(config.knx, config.secure)
     manager = DeviceManager(registry, bus)
     manager.build(config)
 
