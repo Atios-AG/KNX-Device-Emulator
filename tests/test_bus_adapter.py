@@ -220,6 +220,15 @@ def test_connection_config_errors(config, message):
         asyncio.run(KNXIPBusAdapter(config).connect())
 
 
+def test_a_bad_secure_key_is_refused_before_any_tunnel(monkeypatch):
+    import xknx
+    from core.exceptions import BusError
+
+    monkeypatch.setattr(xknx, "XKNX", lambda **kw: pytest.fail("connected with a bad key"))
+    with pytest.raises(BusError, match=r"\[secure\] 1/1/1"):
+        asyncio.run(KNXIPBusAdapter({"connection": "routing"}, {"1/1/1": "0011"}).connect())
+
+
 def test_data_secure_round_trip_and_rejections():
     # [secure]: our telegram is encrypted, a peer with the key reads it, and a
     # plain, a wrongly keyed and a replayed telegram are all dropped.

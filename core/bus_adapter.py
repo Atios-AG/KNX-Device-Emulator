@@ -76,6 +76,7 @@ class KNXIPBusAdapter(BusAdapter):
             raise BusError(
                 f"[knx] connection: expected tunneling, tunneling_tcp or routing, got '{mode}'"
             )
+        secure = data_secure_from_keys(self._secure_keys) if self._secure_keys else None  # bad keys: before any tunnel
         if mode == "routing":
             conn = ConnectionConfig(connection_type=ConnectionType.ROUTING)
         elif mode == "tunneling_tcp":
@@ -113,9 +114,11 @@ class KNXIPBusAdapter(BusAdapter):
             self._on_xknx_telegram
         )
         await self._xknx.start()
-        if self._secure_keys:
-            # after start(): it resets data_secure to what its keyring says, and there is none
-            self._xknx.cemi_handler.data_secure = data_secure_from_keys(self._secure_keys)
+        if secure:
+            # after start(): it resets data_secure to what its keyring says, and there is none.
+            # ponytail: telegrams in the moment between connect and here pass without keys; the station
+            # starts the emulator before the DUT boots into the config, replace xknx's CEMIHandler if that changes
+            self._xknx.cemi_handler.data_secure = secure
             log.info("KNX Data Secure on %d group addresses", len(self._secure_keys))
         log.info("Connected to the KNX bus (%s)", mode)
 
