@@ -9,6 +9,11 @@ The connection is configured by the [knx] section:
     gateway_ip   = 192.168.1.10      (for tunneling and tunneling_tcp)
     gateway_port = 3671
     local_ip     = 192.168.1.50      (optional, UDP tunneling only)
+
+KNX Data Secure is configured by the [secure] section, one line per secured
+group address with its key: telegrams to those addresses are sent encrypted,
+and only encrypted ones with a newer sequence number are accepted.
+    1/1/1 = 000102030405060708090a0b0c0d0e0f
 """
 
 from __future__ import annotations
@@ -24,9 +29,31 @@ from .exceptions import BusError
 log = logging.getLogger(__name__)
 
 
+def data_secure_from_keys(keys: dict[str, str]):
+    """xknx's DataSecure for the [secure] section. Every sender is accepted
+    from sequence number 1 on: there is no keyring that lists the senders."""
+    from collections import defaultdict
+
+    from xknx.secure.data_secure import DataSecure
+    from xknx.telegram import GroupAddress as XGroupAddress
+
+    table = {}
+    for ga, key in keys.items():
+        try:
+            raw = bytes.fromhex(key.strip())
+            address = XGroupAddress(ga.strip())
+        except Exception as exc:
+            raise BusError(f"[secure] {ga}: {exc}") from exc
+        if len(raw) != 16:
+            raise BusError(f"[secure] {ga}: the key must be 32 hex digits")
+        table[address] = raw
+    return DataSecure(group_key_table=table, individual_address_table=defaultdict(int))
+
+
 class KNXIPBusAdapter(BusAdapter):
-    def __init__(self, knx_config: dict[str, str]):
+    def __init__(self, knx_config: dict[str, str], secure_keys: dict[str, str] | None = None):
         self._config = knx_config
+        self._secure_keys = secure_keys or {}
         self._xknx = None
         self._handler: TelegramHandler | None = None
         self._cb_handle = None
@@ -49,6 +76,7 @@ class KNXIPBusAdapter(BusAdapter):
             raise BusError(
                 f"[knx] connection: expected tunneling, tunneling_tcp or routing, got '{mode}'"
             )
+        secure = data_secure_from_keys(self._secure_keys) if self._secure_keys else None  # bad keys: before any tunnel
         if mode == "routing":
             conn = ConnectionConfig(connection_type=ConnectionType.ROUTING)
         elif mode == "tunneling_tcp":
@@ -86,6 +114,12 @@ class KNXIPBusAdapter(BusAdapter):
             self._on_xknx_telegram
         )
         await self._xknx.start()
+        if secure:
+            # after start(): it resets data_secure to what its keyring says, and there is none.
+            # ponytail: telegrams in the moment between connect and here pass without keys; the station
+            # starts the emulator before the DUT boots into the config, replace xknx's CEMIHandler if that changes
+            self._xknx.cemi_handler.data_secure = secure
+            log.info("KNX Data Secure on %d group addresses", len(self._secure_keys))
         log.info("Connected to the KNX bus (%s)", mode)
 
     async def disconnect(self) -> None:

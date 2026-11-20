@@ -3,6 +3,7 @@
 Reserved sections:
   [knx]      — bus connection parameters (KNXnet/IP)
   [control]  — control interface parameters
+  [secure]   — KNX Data Secure: group address = its 128-bit key as 32 hex digits
 All the other sections describe virtual devices; every one of them must have a
 type key that binds it to a plugin.
 """
@@ -10,7 +11,7 @@ type key that binds it to a plugin.
 from __future__ import annotations
 
 import configparser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .address import GroupAddress
 from .exceptions import (
@@ -19,7 +20,7 @@ from .exceptions import (
     MissingOptionError,
 )
 
-_RESERVED_SECTIONS = {"knx", "control"}
+_RESERVED_SECTIONS = {"knx", "control", "secure"}
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
@@ -92,6 +93,7 @@ class AppConfig:
     knx: dict[str, str]
     control: dict[str, str]
     devices: list[DeviceEntry]
+    secure: dict[str, str] = field(default_factory=dict)
 
 
 class ConfigLoader:
@@ -109,6 +111,7 @@ class ConfigLoader:
 
         knx = dict(parser["knx"]) if parser.has_section("knx") else {}
         control = dict(parser["control"]) if parser.has_section("control") else {}
+        secure = dict(parser["secure"]) if parser.has_section("secure") else {}
 
         devices: list[DeviceEntry] = []
         for section in parser.sections():
@@ -126,4 +129,4 @@ class ConfigLoader:
         if not devices:
             raise ConfigError("No devices are described in the config")
 
-        return AppConfig(knx=knx, control=control, devices=devices)
+        return AppConfig(knx=knx, control=control, devices=devices, secure=secure)
